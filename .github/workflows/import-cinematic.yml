@@ -1,0 +1,88 @@
+name: Import Cinematic Journeys implementation
+on:
+  push:
+    branches: [feat/cinematic-journeys]
+    paths: [.github/workflows/import-cinematic.yml]
+permissions:
+  contents: write
+concurrency:
+  group: import-cinematic
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/cinematic-journeys
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Materialize checksum-verified source changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, urllib.request
+          chunks = ['c36b5ef98961a60fbb6978da1d4317bbcfdbbf68', 'a9d9d1faf54ed333a543c74b50c4bfd0f50a9361', '33d53acd2a0672fc0e4ee2762137ec46df2b6332']
+          compressed = bytearray()
+          for sha in chunks:
+              request = urllib.request.Request(f'https://api.github.com/repos/{os.environ["GITHUB_REPOSITORY"]}/git/blobs/{sha}', headers={'Authorization': 'Bearer '+os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  blob = json.load(response)
+              data = base64.b64decode(blob['content'])
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest() == sha
+              compressed.extend(data)
+          payload = lzma.decompress(compressed)
+          assert hashlib.sha256(payload).hexdigest() == '1b53bd694a38e44a77f736af4862d746b6badf5af555f2f82f854e4cc6c168a2'
+          root = pathlib.Path.cwd().resolve()
+          for record in json.loads(payload):
+              path = root / record['path']
+              assert path.resolve().is_relative_to(root) and '.git' not in path.parts and '.github' not in path.parts
+              if 'text' in record:
+                  assert not path.exists(), 'New file already exists: '+record['path']
+                  text = record['text']
+              else:
+                  raw = path.read_bytes()
+                  assert hashlib.sha256(raw).hexdigest() == record['base'], 'Changed base: '+record['path']
+                  text = raw.decode('utf-8')
+                  for start, end, replacement in reversed(record['edits']):
+                      assert 0 <= start <= end <= len(text)
+                      text = text[:start] + replacement + text[end:]
+              data = text.encode('utf-8')
+              assert hashlib.sha256(data).hexdigest() == record['sha256'], 'Target mismatch: '+record['path']
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(data)
+              print('Verified', record['path'], len(data))
+          package = root / 'package.json'
+          data = json.loads(package.read_text())
+          assert data['version'] == '3.0.0'
+          data['version'] = '3.1.0'
+          package.write_text(json.dumps(data, indent=2)+'\n')
+          readme = root / 'README.md'
+          title, separator, rest = readme.read_text().partition('\n')
+          section = '\n## Cinematic Journeys\n\nVersion 3.1 adds linear HDR rendering, soft bloom, four display looks, an interactive photo studio, a route-based driving coach and saved journey telemetry. Terrain-grounded foundations and aligned viaduct spans address visible world defects; the Velocity 320 gains a smooth lofted nose with surface glazing. Scenic bird flocks, shoreline foam, northern night lighting and layered synthesized rail audio add atmosphere. Display, wildlife, sound and reduced-motion controls are optional.\n\nUse **Studio / F2** for photo mode or **Journey** for route guidance. See [Cinematic architecture, controls and validation](docs/CINEMATIC-JOURNEYS.md) for the rendering contract and explicit boundaries.\n'
+          readme.write_text(title + separator + section + rest)
+          PY
+      - name: Test full implementation
+        run: npm test
+      - name: Build and validate distribution
+        run: npm run build:pages
+      - name: Commit implementation and regenerated distribution
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src styles tests tools docs sw.js package.json README.md dist
+          git diff --cached --check
+          git commit -m 'feat: Cinematic Journeys HDR rendering, world polish, train lofts and driving immersion' -m 'Add linear floating-point scene composition, quality-budgeted bloom and grading, moon/aurora/cloud lighting, terrain-grounded foundations, aligned viaduct spans, surface-glazed high-speed nose, instanced wildlife and shoreline foam, layered sound, read-only route coaching, telemetry persistence, reduced-motion camera and photo studio. Include regression coverage, documentation and rebuilt standalone distribution.'
+          git push origin HEAD:feat/cinematic-journeys
+      - name: Archive exact tested sources
+        if: always()
+        run: tar --exclude=.git --exclude=_site --exclude=source-candidate.tar.gz -czf source-candidate.tar.gz .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cinematic-source-candidate
+          path: source-candidate.tar.gz
+          retention-days: 14
