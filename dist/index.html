@@ -28,6 +28,19 @@
 .expedition-action{display:block;text-align:left;padding:0 16px 14px;color:#d9c6a2;font:9px monospace;letter-spacing:.12em}
 @media(max-width:760px){.generation-controls{grid-template-columns:1fr 1fr;gap:12px}.expedition-head{align-items:flex-start;flex-direction:column;gap:10px}.expedition-grid .card-text p{font-size:10px}.expedition-preview{height:112px}}
 @media(max-width:380px){.generation-controls{grid-template-columns:1fr}.expedition-stats{gap:5px}}
+
+/* Cinematic Journeys: optional read-only guidance and non-modal photo controls. */
+.driver-coach{display:block;width:100%;margin:14px 0 0;padding:12px 0 0;border:0;border-top:1px solid #bad2b12b;background:transparent;color:#c4d8bc;text-align:left;line-height:1.5;font-size:11px;cursor:pointer}
+.driver-coach[hidden]{display:none}.coach-metrics{display:block;margin-top:7px;font-size:9px;color:#9cafa2}.coach-metrics b{color:#dfe7d2;margin-right:4px}.coach-metrics b+ b{margin-left:8px}.braking-advice #coach-message{color:#e8b97d}
+#photo-mode,#journey-open{font-size:11px;padding:6px 8px}body.photo-mode #app-ui,body.photo-mode .vignette,body.photo-mode #restore-hud{visibility:hidden;pointer-events:none}
+.photo-studio{position:fixed;z-index:35;bottom:max(22px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(700px,calc(100vw - 32px));padding:18px;border-radius:13px;background:#152923eb;color:#e0e7d8;box-sizing:border-box}
+.studio-title{display:flex;gap:12px;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.1em}.studio-title small{display:block;font-size:10px;color:#a5b3a0;letter-spacing:0;margin-top:5px}.studio-fields{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:15px;align-items:end;margin-top:14px}.studio-fields label{display:grid;gap:8px;font-size:10px;text-transform:uppercase;color:#bdcdb5}.studio-fields input{width:100%;accent-color:#b9d5a7}.studio-fields select{max-width:100%;min-height:36px;background:#1d3429;color:#d8e4d0;border:1px solid #bacbaa44;border-radius:6px;padding:6px}
+#route-profile{width:100%;height:200px;border-radius:8px;display:block;margin:15px 0}.journey-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:22px 0}.journey-stats div{border:1px solid #baceac25;border-radius:8px;padding:17px 12px;background:#a8c29908}.journey-stats b{display:block;font-size:27px;color:#d8e3c9;font-weight:500}.journey-stats span{display:block;font-size:10px;color:#a4b499;margin-top:6px}
+@media(max-width:760px){.driver-coach{margin-top:6px;font-size:10px;padding-top:7px}.coach-metrics{font-size:8px}#photo-mode,#journey-open{padding:4px;font-size:10px}.view-controls{max-width:calc(100vw - 22px)}.studio-fields{grid-template-columns:1fr 1fr}.photo-studio{padding:12px;bottom:12px}.journey-stats{grid-template-columns:repeat(2,1fr)}.journey-stats div:last-child{grid-column:1/-1}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}.loading,.toast{animation:none!important;transition:none!important}}
+
+/* The display pass owns vignette; do not darken the scene a second time. */
+.vignette{display:none}
 </style>
 </head>
 <body>
@@ -103,6 +116,218 @@
 <input id="project-file" type="file" accept=".json,.railbound,application/json" hidden>
 <script>globalThis.RAILBOUND_STANDALONE=true;
 'use strict';
+// ---- src/math.js ----
+const __m_src_math_js = (() => {
+
+/** Column-major right-handed math; world +Y is up; train local +Z is forward. */
+const TAU = Math.PI * 2;
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (a, b, x) => { const t = clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+const mod = (a,n) => ((a%n)+n)%n;
+const v3 = (x=0,y=0,z=0) => [x,y,z];
+const add = (a,b) => [a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const mul = (a,n) => [a[0]*n,a[1]*n,a[2]*n];
+const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross = (a,b) => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const length = a => Math.hypot(...a);
+const norm = a => {const l=length(a)||1;return mul(a,1/l);};
+const mix3 = (a,b,t) => [lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+function rng(seed=1) { let a=seed>>>0; return () => {a+=0x6D2B79F5;let t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;}; }
+function hash2(x,z,seed=0){let h=Math.imul(x|0,374761393)^Math.imul(z|0,668265263)^Math.imul(seed|0,1274126177);h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295;}
+function noise2(x,z,seed=0){const ix=Math.floor(x),iz=Math.floor(z),fx=x-ix,fz=z-iz,u=fx*fx*(3-2*fx),v=fz*fz*(3-2*fz);return lerp(lerp(hash2(ix,iz,seed),hash2(ix+1,iz,seed),u),lerp(hash2(ix,iz+1,seed),hash2(ix+1,iz+1,seed),u),v);}
+function fbm(x,z,seed=0,octaves=5){let v=0,a=.5;for(let i=0;i<octaves;i++){v+=noise2(x,z,seed+i*31)*a;x=x*2.03+15.7;z=z*2.03-6.3;a*=.5;}return v;}
+function mat4Identity(){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);}
+function mat4Mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++)o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];return o;}
+function perspective(fov,aspect,near,far,webgpu=true){const f=1/Math.tan(fov/2),m=new Float32Array(16);m[0]=f/aspect;m[5]=f;m[11]=-1;if(webgpu){m[10]=far/(near-far);m[14]=far*near/(near-far);}else{m[10]=(far+near)/(near-far);m[14]=2*far*near/(near-far);}return m;}
+function orthographic(l,r,b,t,n,f,webgpu=true){const m=mat4Identity();m[0]=2/(r-l);m[5]=2/(t-b);m[12]=-(r+l)/(r-l);m[13]=-(t+b)/(t-b);m[10]=(webgpu?1:2)/(n-f);m[14]=webgpu?n/(n-f):(f+n)/(n-f);return m;}
+function lookAt(eye,target,up=[0,1,0]){const z=norm(sub(eye,target)),x=norm(cross(up,z)),y=cross(z,x);return new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,eye),-dot(y,eye),-dot(z,eye),1]);}
+function mat4Inverse(a){const out=new Float32Array(16);const aug=Array.from({length:4},(_,r)=>[a[r],a[4+r],a[8+r],a[12+r],...Array.from({length:4},(_,c)=>+(c===r))]);for(let i=0;i<4;i++){let p=i;for(let r=i+1;r<4;r++)if(Math.abs(aug[r][i])>Math.abs(aug[p][i]))p=r;if(Math.abs(aug[p][i])<1e-12)return mat4Identity();[aug[i],aug[p]]=[aug[p],aug[i]];const d=aug[i][i];for(let c=0;c<8;c++)aug[i][c]/=d;for(let r=0;r<4;r++)if(r!==i){const s=aug[r][i];for(let c=0;c<8;c++)aug[r][c]-=aug[i][c]*s;}}for(let r=0;r<4;r++)for(let c=0;c<4;c++)out[c*4+r]=aug[r][c+4];return out;}
+function transform(p,scale=[1,1,1],yaw=0,pitch=0,roll=0){const cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch),cr=Math.cos(roll),sr=Math.sin(roll);const m=mat4Identity();m[0]=(cy*cr+sy*sp*sr)*scale[0];m[1]=cp*sr*scale[0];m[2]=(-sy*cr+cy*sp*sr)*scale[0];m[4]=(-cy*sr+sy*sp*cr)*scale[1];m[5]=cp*cr*scale[1];m[6]=(sy*sr+cy*sp*cr)*scale[1];m[8]=sy*cp*scale[2];m[9]=-sp*scale[2];m[10]=cy*cp*scale[2];m[12]=p[0];m[13]=p[1];m[14]=p[2];return m;}
+function frameMatrix(p,tangent,scale=[1,1,1]){const f=norm(tangent),right=norm(cross([0,1,0],f)),up=cross(f,right);return new Float32Array([right[0]*scale[0],right[1]*scale[0],right[2]*scale[0],0,up[0]*scale[1],up[1]*scale[1],up[2]*scale[1],0,f[0]*scale[2],f[1]*scale[2],f[2]*scale[2],0,...p,1]);}
+function pointTransform(m,p){return [m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12],m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13],m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]];}
+function hex(s){const n=parseInt(s.replace('#',''),16);return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255,1];}
+function catmull(p0,p1,p2,p3,t){const t2=t*t,t3=t2*t;return [0,1,2].map(i=>.5*((2*p1[i])+(-p0[i]+p2[i])*t+(2*p0[i]-5*p1[i]+4*p2[i]-p3[i])*t2+(-p0[i]+3*p1[i]-3*p2[i]+p3[i])*t3));}
+function downloadFile(name,data,type='application/json'){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
+
+return {TAU,clamp,lerp,smooth,mod,v3,add,sub,mul,dot,cross,length,norm,mix3,rng,hash2,noise2,fbm,mat4Identity,mat4Mul,perspective,orthographic,lookAt,mat4Inverse,transform,frameMatrix,pointTransform,hex,catmull,downloadFile};
+})();
+// ---- src/postprocess.js ----
+const __m_src_postprocess_js = (() => {
+const {clamp} = __m_src_math_js;
+/** Linear-light scene -> quarter-resolution bloom -> filmic display transform.
+ * Each pass has distinct sampled/attachment resources (no feedback hazards).
+ * WebGL float renderability and MSAA counts are queried, never assumed.
+ */
+
+const LOOKS = Object.freeze({
+ natural:{saturation:1.02,contrast:1.03,temperature:0},
+ cinema:{saturation:.93,contrast:1.10,temperature:.06},
+ alpine:{saturation:.91,contrast:1.04,temperature:-.08},
+ vintage:{saturation:.72,contrast:1.06,temperature:.16}
+});
+function postOptions(value={}) {
+ const v=value&&typeof value==='object'?value:{};
+ const finite=(x,lo,hi,d)=>Number.isFinite(x)?clamp(x,lo,hi):d;
+ return {look:Object.hasOwn(LOOKS,v.look)?v.look:'natural',bloom:finite(v.bloom,0,1,.24),
+  vignette:finite(v.vignette,0,.6,.15),grain:finite(v.grain,0,.15,0)};
+}
+function targetSize(width,height,scale=1,max=4096) {
+ const w=Math.max(1,Number.isFinite(width)?width:1),h=Math.max(1,Number.isFinite(height)?height:1);
+ const s=Math.max(.1,Math.min(Number.isFinite(scale)?scale:1,max/w,max/h));
+ // Clamp proportionally, including unusually large/hostile viewport values.
+ const k=Math.min(s,max/w,max/h);
+ return [Math.max(1,Math.floor(w*k)),Math.max(1,Math.floor(h*k))];
+}
+const POST_WGSL=/* wgsl */`
+struct Post {screen:vec4f,look:vec4f,style:vec4f};
+@group(0) @binding(0) var<uniform> u:Post;
+@group(0) @binding(1) var scene:texture_2d<f32>;
+@group(0) @binding(2) var glow:texture_2d<f32>;
+@group(0) @binding(3) var linearSampler:sampler;
+struct Out {@builtin(position) position:vec4f,@location(0) uv:vec2f};
+@vertex fn vs(@builtin(vertex_index) i:u32)->Out {
+ let p=vec2f(f32((i<<1u)&2u),f32(i&2u));var o:Out;
+ o.position=vec4f(p*2.-1.,0.,1.);o.uv=vec2f(p.x,1.-p.y);return o;
+}
+fn sampleScene(uv:vec2f)->vec3f {return textureSampleLevel(scene,linearSampler,uv,0.).rgb;}
+fn threshold(c:vec3f)->vec3f {let l=max(max(c.r,c.g),c.b);let knee=clamp(l-.65,0.,.7);let soft=knee*knee/1.4;return c*max(l-1.,soft)/max(l,.0001);}
+@fragment fn extract(v:Out)->@location(0) vec4f {
+ let d=1./u.screen.xy;var c=vec3f(0);
+ c+=sampleScene(v.uv+vec2f(-1.5,-1.5)*d);c+=sampleScene(v.uv+vec2f(1.5,-1.5)*d);
+ c+=sampleScene(v.uv+vec2f(-1.5,1.5)*d);c+=sampleScene(v.uv+vec2f(1.5,1.5)*d);
+ return vec4f(threshold(c*.25),1);
+}
+fn blur(uv:vec2f,axis:vec2f)->vec4f {
+ let d=axis/vec2f(textureDimensions(scene));var c=sampleScene(uv)*.227027;
+ c+=(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216;
+ c+=(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;
+ return vec4f(c,1);
+}
+@fragment fn blurH(v:Out)->@location(0) vec4f {return blur(v.uv,vec2f(1,0));}
+@fragment fn blurV(v:Out)->@location(0) vec4f {return blur(v.uv,vec2f(0,1));}
+fn aces(c:vec3f)->vec3f {let x=max(c,vec3f(0));return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),vec3f(0),vec3f(1));}
+@fragment fn composite(v:Out)->@location(0) vec4f {
+ var c=sampleScene(v.uv)+textureSampleLevel(glow,linearSampler,v.uv,0.).rgb*u.look.x;
+ c*=vec3f(1.+u.style.x*.25,1.,1.-u.style.x*.25);
+ c=aces(c*u.screen.w);let lum=dot(c,vec3f(.2126,.7152,.0722));c=mix(vec3f(lum),c,u.look.y);
+ c=pow(clamp(c,vec3f(0),vec3f(1)),vec3f(u.look.z));
+ let q=v.uv*(1.-v.uv);let vig=pow(clamp(q.x*q.y*16.,0.,1.),.28);
+ c*=mix(1.,vig,u.look.w);
+ c=pow(max(c,vec3f(0)),vec3f(1./2.2));
+ let grain=fract(sin(dot(v.position.xy+u.screen.z*17.,vec2f(12.9898,78.233)))*43758.5453)-.5;
+ return vec4f(clamp(c+grain*u.style.y,vec3f(0),vec3f(1)),1);
+}
+`;
+const GL_VS=`#version 300 es
+precision highp float;out vec2 uv;void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));gl_Position=vec4(p*2.-1.,0,1);uv=p;}`;
+const GL_COMMON=`#version 300 es
+precision highp float;uniform vec4 screen,look,style;uniform sampler2D scene,glow;in vec2 uv;out vec4 outColor;
+vec3 sampleScene(vec2 p){return texture(scene,p).rgb;}
+vec3 aces(vec3 c){vec3 x=max(c,vec3(0));return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.);}
+`;
+const GL_FS={
+ extract:GL_COMMON+`void main(){vec2 d=1./screen.xy;vec3 c=(sampleScene(uv+vec2(-1.5,-1.5)*d)+sampleScene(uv+vec2(1.5,-1.5)*d)+sampleScene(uv+vec2(-1.5,1.5)*d)+sampleScene(uv+vec2(1.5,1.5)*d))*.25;float l=max(max(c.r,c.g),c.b),knee=clamp(l-.65,0.,.7);outColor=vec4(c*max(l-1.,knee*knee/1.4)/max(l,.0001),1);}`,
+ blurH:GL_COMMON+`void main(){vec2 d=vec2(1,0)/vec2(textureSize(scene,0));vec3 c=sampleScene(uv)*.227027+(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216+(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;outColor=vec4(c,1);}`,
+ blurV:GL_COMMON+`void main(){vec2 d=vec2(0,1)/vec2(textureSize(scene,0));vec3 c=sampleScene(uv)*.227027+(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216+(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;outColor=vec4(c,1);}`,
+ composite:GL_COMMON+`void main(){vec3 c=sampleScene(uv)+texture(glow,uv).rgb*look.x;c*=vec3(1.+style.x*.25,1.,1.-style.x*.25);c=style.z>.5?aces(c*screen.w):pow(max(c,vec3(0)),vec3(2.2));float lum=dot(c,vec3(.2126,.7152,.0722));c=mix(vec3(lum),c,look.y);c=pow(clamp(c,vec3(0),vec3(1)),vec3(look.z));vec2 q=uv*(1.-uv);c*=mix(1.,pow(clamp(q.x*q.y*16.,0.,1.),.28),look.w);c=pow(max(c,vec3(0)),vec3(1./2.2));float grain=fract(sin(dot(gl_FragCoord.xy+screen.z*17.,vec2(12.9898,78.233)))*43758.5453)-.5;outColor=vec4(clamp(c+grain*style.y,0.,1.),1);}`
+};
+
+class PostProcessor {
+ constructor(){this.options=postOptions();this.width=0;this.height=0;this.passCount=0;this.resources=[];this.frame=new Float32Array(12);}
+ async initGPU(device,format){
+  this.device=device;this.hdr=true;this.format=format;
+  this.uniform=device.createBuffer({label:'Display transform',size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+  this.sampler=device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge'});
+  this.layout=device.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'uniform'}},{binding:1,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}},{binding:2,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}},{binding:3,visibility:GPUShaderStage.FRAGMENT,sampler:{type:'filtering'}}]});
+  const module=device.createShaderModule({label:'Linear bloom and filmic display',code:POST_WGSL});
+  const errors=(await module.getCompilationInfo()).messages.filter(m=>m.type==='error');
+  if(errors.length)throw new Error(errors.map(e=>`${e.lineNum}: ${e.message}`).join('\n'));
+  this.pipelines={};
+  for(const entryPoint of ['extract','blurH','blurV','composite'])this.pipelines[entryPoint]=await device.createRenderPipelineAsync({
+   label:'Post '+entryPoint,layout:device.createPipelineLayout({bindGroupLayouts:[this.layout]}),
+   vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint,targets:[{format:entryPoint==='composite'?format:'rgba16float'}]},primitive:{topology:'triangle-list'}
+  });
+ }
+ initGL(gl,compile){
+  this.gl=gl;this.hdr=!!gl.getExtension('EXT_color_buffer_float');this.colorFormat=this.hdr?gl.RGBA16F:gl.RGBA8;
+  this.programs={};this.locations={};this.vao=gl.createVertexArray();
+  for(const [name,fs] of Object.entries(GL_FS)) {
+   const p=this.programs[name]=compile(GL_VS,fs),loc=this.locations[name]={};gl.useProgram(p);
+   for(const key of ['screen','look','style'])loc[key]=gl.getUniformLocation(p,key);
+   gl.uniform1i(gl.getUniformLocation(p,'scene'),0);gl.uniform1i(gl.getUniformLocation(p,'glow'),1);
+  }
+  const colorSamples=Array.from(gl.getInternalformatParameter(gl.RENDERBUFFER,this.colorFormat,gl.SAMPLES));
+  const depthSamples=Array.from(gl.getInternalformatParameter(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,gl.SAMPLES));
+  this.samples=Math.max(0,...colorSamples.filter(n=>n<=4&&depthSamples.includes(n)));
+ }
+ releaseTargets(){
+  if(this.device){for(const r of this.resources)r.destroy();}
+  else if(this.gl)for(const [kind,r] of this.resources)this.gl[kind](r);
+  this.resources=[];this.groups=null;
+ }
+ resize(w,h){
+  if(this.width===w&&this.height===h)return;
+  this.releaseTargets();this.width=w;this.height=h;this.bw=Math.max(1,Math.floor(w/4));this.bh=Math.max(1,Math.floor(h/4));
+  if(this.device){
+   const texture=(width,height)=>{const t=this.device.createTexture({size:[width,height],format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});this.resources.push(t);return t;};
+   this.scene=texture(w,h);this.a=texture(this.bw,this.bh);this.b=texture(this.bw,this.bh);
+   const group=(scene,glow)=>this.device.createBindGroup({layout:this.layout,entries:[{binding:0,resource:{buffer:this.uniform}},{binding:1,resource:scene.createView()},{binding:2,resource:glow.createView()},{binding:3,resource:this.sampler}]});
+   // Unused bindings also must never alias the current render attachment.
+   this.groups={extract:group(this.scene,this.scene),blurH:group(this.a,this.scene),blurV:group(this.b,this.scene),composite:group(this.scene,this.a)};
+  } else {
+   const g=this.gl,own=(kind,r)=>{this.resources.push([kind,r]);return r;};
+   const target=(width,height)=>{
+    const texture=own('deleteTexture',g.createTexture());g.bindTexture(g.TEXTURE_2D,texture);
+    g.texImage2D(g.TEXTURE_2D,0,this.colorFormat,width,height,0,g.RGBA,this.hdr?g.HALF_FLOAT:g.UNSIGNED_BYTE,null);
+    for(const [p,v] of [[g.TEXTURE_MIN_FILTER,g.LINEAR],[g.TEXTURE_MAG_FILTER,g.LINEAR],[g.TEXTURE_WRAP_S,g.CLAMP_TO_EDGE],[g.TEXTURE_WRAP_T,g.CLAMP_TO_EDGE]])g.texParameteri(g.TEXTURE_2D,p,v);
+    const fb=own('deleteFramebuffer',g.createFramebuffer());g.bindFramebuffer(g.FRAMEBUFFER,fb);g.framebufferTexture2D(g.FRAMEBUFFER,g.COLOR_ATTACHMENT0,g.TEXTURE_2D,texture,0);
+    return {texture,fb};
+   };
+   this.scene=target(w,h);this.a=target(this.bw,this.bh);this.b=target(this.bw,this.bh);
+   this.sceneFB=this.scene.fb;
+   if(this.samples){
+    this.sceneFB=own('deleteFramebuffer',g.createFramebuffer());g.bindFramebuffer(g.FRAMEBUFFER,this.sceneFB);
+    const color=own('deleteRenderbuffer',g.createRenderbuffer());g.bindRenderbuffer(g.RENDERBUFFER,color);g.renderbufferStorageMultisample(g.RENDERBUFFER,this.samples,this.colorFormat,w,h);g.framebufferRenderbuffer(g.FRAMEBUFFER,g.COLOR_ATTACHMENT0,g.RENDERBUFFER,color);
+   }else g.bindFramebuffer(g.FRAMEBUFFER,this.sceneFB);
+   const depth=own('deleteRenderbuffer',g.createRenderbuffer());g.bindRenderbuffer(g.RENDERBUFFER,depth);
+   if(this.samples)g.renderbufferStorageMultisample(g.RENDERBUFFER,this.samples,g.DEPTH_COMPONENT24,w,h);else g.renderbufferStorage(g.RENDERBUFFER,g.DEPTH_COMPONENT24,w,h);
+   g.framebufferRenderbuffer(g.FRAMEBUFFER,g.DEPTH_ATTACHMENT,g.RENDERBUFFER,depth);
+   if(g.checkFramebufferStatus(g.FRAMEBUFFER)!==g.FRAMEBUFFER_COMPLETE)throw new Error('Scene framebuffer is incomplete');
+   g.bindFramebuffer(g.FRAMEBUFFER,null);g.bindRenderbuffer(g.RENDERBUFFER,null);
+  }
+ }
+ update(env,time,quality){
+  const o=postOptions(this.options),look=LOOKS[o.look];this.bloomActive=o.bloom>0&&quality!=='low'&&this.hdr;
+  this.frame.set([this.width,this.height,time,Number.isFinite(env.exposure)?env.exposure:1]);
+  this.frame.set([this.bloomActive?o.bloom:0,look.saturation,look.contrast,o.vignette],4);
+  this.frame.set([look.temperature,o.grain,this.hdr?1:0,0],8);
+ }
+ encodeGPU(encoder,output,env,time,quality){
+  this.update(env,time,quality);this.device.queue.writeBuffer(this.uniform,0,this.frame);this.passCount=0;
+  const pass=(name,view)=>{const p=encoder.beginRenderPass({label:'Post '+name,colorAttachments:[{view,loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});p.setPipeline(this.pipelines[name]);p.setBindGroup(0,this.groups[name]);p.draw(3);p.end();this.passCount++;};
+  if(this.bloomActive){pass('extract',this.a.createView());pass('blurH',this.b.createView());pass('blurV',this.a.createView());}
+  pass('composite',output);
+ }
+ drawGL(env,time,quality){
+  this.update(env,time,quality);const g=this.gl;this.passCount=0;
+  if(this.samples){g.bindFramebuffer(g.READ_FRAMEBUFFER,this.sceneFB);g.bindFramebuffer(g.DRAW_FRAMEBUFFER,this.scene.fb);g.blitFramebuffer(0,0,this.width,this.height,0,0,this.width,this.height,g.COLOR_BUFFER_BIT,g.NEAREST);}
+  g.disable(g.DEPTH_TEST);g.disable(g.BLEND);g.depthMask(false);g.bindVertexArray(this.vao);
+  const pass=(name,target,source,glow,w,h)=>{
+   g.bindFramebuffer(g.FRAMEBUFFER,target);g.viewport(0,0,w,h);g.useProgram(this.programs[name]);const l=this.locations[name];
+   g.uniform4fv(l.screen,this.frame.subarray(0,4));g.uniform4fv(l.look,this.frame.subarray(4,8));g.uniform4fv(l.style,this.frame.subarray(8,12));
+   g.activeTexture(g.TEXTURE0);g.bindTexture(g.TEXTURE_2D,source);g.activeTexture(g.TEXTURE1);g.bindTexture(g.TEXTURE_2D,glow);g.drawArrays(g.TRIANGLES,0,3);this.passCount++;
+  };
+  if(this.bloomActive){pass('extract',this.a.fb,this.scene.texture,this.scene.texture,this.bw,this.bh);pass('blurH',this.b.fb,this.a.texture,this.scene.texture,this.bw,this.bh);pass('blurV',this.a.fb,this.b.texture,this.scene.texture,this.bw,this.bh);}
+  pass('composite',null,this.scene.texture,this.a.texture,this.width,this.height);
+  g.activeTexture(g.TEXTURE0);g.bindVertexArray(null);g.depthMask(true);g.enable(g.DEPTH_TEST);
+ }
+ dispose(){this.releaseTargets();this.uniform?.destroy?.();if(this.gl){for(const p of Object.values(this.programs))this.gl.deleteProgram(p);this.gl.deleteVertexArray(this.vao);}}
+}
+
+return {LOOKS,postOptions,targetSize,POST_WGSL,PostProcessor};
+})();
 // ---- src/data.js ----
 const __m_src_data_js = (() => {
 
@@ -142,42 +367,288 @@ const SCENARIOS = [
 
 return {WORLDS,STOCK,WEATHER,SCENARIOS};
 })();
-// ---- src/math.js ----
-const __m_src_math_js = (() => {
+// ---- src/journey.js ----
+const __m_src_journey_js = (() => {
+const {clamp} = __m_src_math_js;
+const {WEATHER} = __m_src_data_js;
+/** Read-only driving coach. SI internally; never substitutes for train protection. */
 
-/** Column-major right-handed math; world +Y is up; train local +Z is forward. */
-const TAU = Math.PI * 2;
-const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const lerp = (a, b, t) => a + (b - a) * t;
-const smooth = (a, b, x) => { const t = clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
-const mod = (a,n) => ((a%n)+n)%n;
-const v3 = (x=0,y=0,z=0) => [x,y,z];
-const add = (a,b) => [a[0]+b[0],a[1]+b[1],a[2]+b[2]];
-const sub = (a,b) => [a[0]-b[0],a[1]-b[1],a[2]-b[2]];
-const mul = (a,n) => [a[0]*n,a[1]*n,a[2]*n];
-const dot = (a,b) => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-const cross = (a,b) => [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
-const length = a => Math.hypot(...a);
-const norm = a => {const l=length(a)||1;return mul(a,1/l);};
-const mix3 = (a,b,t) => [lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
-function rng(seed=1) { let a=seed>>>0; return () => {a+=0x6D2B79F5;let t=a;t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return ((t^(t>>>14))>>>0)/4294967296;}; }
-function hash2(x,z,seed=0){let h=Math.imul(x|0,374761393)^Math.imul(z|0,668265263)^Math.imul(seed|0,1274126177);h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295;}
-function noise2(x,z,seed=0){const ix=Math.floor(x),iz=Math.floor(z),fx=x-ix,fz=z-iz,u=fx*fx*(3-2*fx),v=fz*fz*(3-2*fz);return lerp(lerp(hash2(ix,iz,seed),hash2(ix+1,iz,seed),u),lerp(hash2(ix,iz+1,seed),hash2(ix+1,iz+1,seed),u),v);}
-function fbm(x,z,seed=0,octaves=5){let v=0,a=.5;for(let i=0;i<octaves;i++){v+=noise2(x,z,seed+i*31)*a;x=x*2.03+15.7;z=z*2.03-6.3;a*=.5;}return v;}
-function mat4Identity(){return new Float32Array([1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1]);}
-function mat4Mul(a,b){const o=new Float32Array(16);for(let c=0;c<4;c++)for(let r=0;r<4;r++)o[c*4+r]=a[r]*b[c*4]+a[4+r]*b[c*4+1]+a[8+r]*b[c*4+2]+a[12+r]*b[c*4+3];return o;}
-function perspective(fov,aspect,near,far,webgpu=true){const f=1/Math.tan(fov/2),m=new Float32Array(16);m[0]=f/aspect;m[5]=f;m[11]=-1;if(webgpu){m[10]=far/(near-far);m[14]=far*near/(near-far);}else{m[10]=(far+near)/(near-far);m[14]=2*far*near/(near-far);}return m;}
-function orthographic(l,r,b,t,n,f,webgpu=true){const m=mat4Identity();m[0]=2/(r-l);m[5]=2/(t-b);m[12]=-(r+l)/(r-l);m[13]=-(t+b)/(t-b);m[10]=(webgpu?1:2)/(n-f);m[14]=webgpu?n/(n-f):(f+n)/(n-f);return m;}
-function lookAt(eye,target,up=[0,1,0]){const z=norm(sub(eye,target)),x=norm(cross(up,z)),y=cross(z,x);return new Float32Array([x[0],y[0],z[0],0,x[1],y[1],z[1],0,x[2],y[2],z[2],0,-dot(x,eye),-dot(y,eye),-dot(z,eye),1]);}
-function mat4Inverse(a){const out=new Float32Array(16);const aug=Array.from({length:4},(_,r)=>[a[r],a[4+r],a[8+r],a[12+r],...Array.from({length:4},(_,c)=>+(c===r))]);for(let i=0;i<4;i++){let p=i;for(let r=i+1;r<4;r++)if(Math.abs(aug[r][i])>Math.abs(aug[p][i]))p=r;if(Math.abs(aug[p][i])<1e-12)return mat4Identity();[aug[i],aug[p]]=[aug[p],aug[i]];const d=aug[i][i];for(let c=0;c<8;c++)aug[i][c]/=d;for(let r=0;r<4;r++)if(r!==i){const s=aug[r][i];for(let c=0;c<8;c++)aug[r][c]-=aug[i][c]*s;}}for(let r=0;r<4;r++)for(let c=0;c<4;c++)out[c*4+r]=aug[r][c+4];return out;}
-function transform(p,scale=[1,1,1],yaw=0,pitch=0,roll=0){const cy=Math.cos(yaw),sy=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch),cr=Math.cos(roll),sr=Math.sin(roll);const m=mat4Identity();m[0]=(cy*cr+sy*sp*sr)*scale[0];m[1]=cp*sr*scale[0];m[2]=(-sy*cr+cy*sp*sr)*scale[0];m[4]=(-cy*sr+sy*sp*cr)*scale[1];m[5]=cp*cr*scale[1];m[6]=(sy*sr+cy*sp*cr)*scale[1];m[8]=sy*cp*scale[2];m[9]=-sp*scale[2];m[10]=cy*cp*scale[2];m[12]=p[0];m[13]=p[1];m[14]=p[2];return m;}
-function frameMatrix(p,tangent,scale=[1,1,1]){const f=norm(tangent),right=norm(cross([0,1,0],f)),up=cross(f,right);return new Float32Array([right[0]*scale[0],right[1]*scale[0],right[2]*scale[0],0,up[0]*scale[1],up[1]*scale[1],up[2]*scale[1],0,f[0]*scale[2],f[1]*scale[2],f[2]*scale[2],0,...p,1]);}
-function pointTransform(m,p){return [m[0]*p[0]+m[4]*p[1]+m[8]*p[2]+m[12],m[1]*p[0]+m[5]*p[1]+m[9]*p[2]+m[13],m[2]*p[0]+m[6]*p[1]+m[10]*p[2]+m[14]];}
-function hex(s){const n=parseInt(s.replace('#',''),16);return [((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255,1];}
-function catmull(p0,p1,p2,p3,t){const t2=t*t,t3=t2*t;return [0,1,2].map(i=>.5*((2*p1[i])+(-p0[i]+p2[i])*t+(2*p0[i]-5*p1[i]+4*p2[i]-p3[i])*t2+(-p0[i]+3*p1[i]-3*p2[i]+p3[i])*t3));}
-function downloadFile(name,data,type='application/json'){const url=URL.createObjectURL(new Blob([data],{type}));const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);}
 
-return {TAU,clamp,lerp,smooth,mod,v3,add,sub,mul,dot,cross,length,norm,mix3,rng,hash2,noise2,fbm,mat4Identity,mat4Mul,perspective,orthographic,lookAt,mat4Inverse,transform,frameMatrix,pointTransform,hex,catmull,downloadFile};
+function serviceStoppingDistance(speed,grade=0,cars=0,wet=0){
+ const v=Math.abs(Number.isFinite(speed)?speed:0),slope=Number.isFinite(grade)?clamp(grade,-.12,.12):0;
+ const decel=Math.max(.20,.78-clamp(wet,0,1)*.16+9.80665*slope),delay=2+clamp(cars,0,18)*.12;
+ return v*delay+v*v/(2*decel);
+}
+function speedEnvelope(target,distance,grade=0,wet=0){
+ const a=Math.max(.20,.78-clamp(wet,0,1)*.16+9.80665*clamp(grade,-.12,.12));
+ return Math.sqrt(Math.max(0,target*target+2*a*Math.max(0,distance)));
+}
+function cleanJourney(value={}){
+ const v=value&&typeof value==='object'?value:{},result={};
+ for(const key of ['distance','seconds','overspeed','harsh','energy','stops'])result[key]=Number.isFinite(v[key])?clamp(v[key],0,1e9):0;
+ return result;
+}
+class JourneyDirector {
+ constructor(){this.stats=cleanJourney();this.profile=[];this.clock=0;this.lastSpeed=null;this.lastOdometer=null;this.jerk=0;this.guidance={message:'Ready for departure',target:0,distance:0,kind:'clear'};this.previousAcceleration=0;this.stationId=null;this.stationCounted=false;}
+ reset(value){this.stats=cleanJourney(value);this.clock=0;this.lastSpeed=null;this.lastOdometer=null;this.previousAcceleration=0;this.jerk=0;this.stationId=null;this.stationCounted=false;this.profile=[];}
+ step(dt,train,world,env,limit,mission){
+  if(!Number.isFinite(dt)||dt<=0||dt>.1)return;
+  const v=Math.abs(train.speed),position=train.cursor.odometer;
+  if(this.lastOdometer!==null){const d=Math.abs(position-this.lastOdometer);if(d<v*dt+2)this.stats.distance+=d;}
+  this.lastOdometer=position;this.stats.seconds+=dt;
+  if(v*3.6>limit+3)this.stats.overspeed+=dt;
+  const raw=(train.acceleration-this.previousAcceleration)/dt;
+  this.jerk+=(clamp(raw,-15,15)-this.jerk)*(1-Math.exp(-dt*3));this.previousAcceleration=train.acceleration;
+  if(v>.8&&(Math.abs(this.jerk)>1.2||Math.abs(train.acceleration)>1.15))this.stats.harsh+=dt;
+  this.stats.energy+=Math.max(0,Math.abs(train.traction*train.speed))*dt/3600000;
+  const p=train.cursor.pose(),station=world.stations.find(s=>s.edge===p.edge&&Math.abs(s.s-p.s)<18);
+  if(station&&v<.15&&train.controls.doors&&this.stationId!==station.id){this.stats.stops++;this.stationId=station.id;}
+  else if(!station)this.stationId=null;
+  this.clock-=dt;
+  if(this.clock<=0){this.clock=.4;this.survey(train,world,env,limit,mission);}
+ }
+ survey(train,world,env,limit,mission){
+  const direction=Math.sign(train.speed)||train.controls.reverser||1,v=Math.abs(train.speed),wet=(WEATHER[env.weather]||WEATHER.clear).wet;
+  const grade=train.grade*direction,stop=serviceStoppingDistance(v,grade,train.cars,wet),range=clamp(stop*1.5+600,1200,4000);
+  this.profile=[];let routeGrade=grade,target=limit/3.6,constraint={distance:range,kind:'clear',message:'Line clear — enjoy the journey'};
+  for(let d=0;d<=range;d+=60){
+   const p=train.cursor.pose(direction*d),edge=world.network.edges.get(p.edge),speed=Math.min(train.stock.maxSpeed,edge.speedLimit(p.s));
+   const travelGrade=p.grade*direction;routeGrade=Math.min(routeGrade,travelGrade);
+   this.profile.push({distance:d,height:p.p[1],limit:speed,grade:travelGrade});
+   const permitted=speedEnvelope(speed/3.6,Math.max(0,d-v*(2+train.cars*.12)),routeGrade,wet);
+   if(permitted<target){target=permitted;constraint={distance:d,kind:'limit',message:`Curve / limit ahead · ${Math.round(speed)} km/h`};}
+  }
+  const gradeTo=distance=>Math.min(grade,...this.profile.filter(p=>p.distance<=distance).map(p=>p.grade));
+  const danger=world.traffic?.dangerDistance(train,Math.min(4000,range))??Infinity;
+  if(Number.isFinite(danger)){
+   const safe=speedEnvelope(0,Math.max(0,danger-30-v*2),gradeTo(danger),wet);
+   if(safe<target){target=safe;constraint={distance:danger,kind:'signal',message:'Occupied block — prepare to stop'};}
+  }
+  if(mission?.target&&!mission.complete&&direction>0){
+   const d=train.cursor.distanceTo(mission.target.edge,mission.target.s);
+   const safe=speedEnvelope(0,Math.max(0,d-10-v*(2+train.cars*.12)),gradeTo(d),wet);
+   if(d<range&&safe<target){target=safe;constraint={distance:d,kind:'station',message:`Approaching ${mission.target.name}`};}
+  }
+  this.guidance={...constraint,target:target*3.6,stoppingDistance:stop,brake:v>target+.6,comfort:Math.max(0,100-Math.abs(this.jerk)*22-Math.max(0,Math.abs(train.acceleration)-.65)*30)};
+  if(train.derailed)this.guidance={...this.guidance,kind:'disabled',message:'Recover the train in Setup',brake:false};
+ }
+ get score(){return Math.round(clamp(100-(this.stats.overspeed*80+this.stats.harsh*30)/Math.max(30,this.stats.seconds),0,100));}
+}
+
+return {serviceStoppingDistance,speedEnvelope,cleanJourney,JourneyDirector};
+})();
+// ---- src/geometry.js ----
+const __m_src_geometry_js = (() => {
+const {norm,sub,cross,TAU,transform,frameMatrix,add,mul,length} = __m_src_math_js;
+
+class Geometry {
+ constructor(vertices,indices){this.vertices=new Float32Array(vertices);this.indices=new Uint32Array(indices);this.gpu=null;this.gl=null;}
+}
+class MeshBuilder {
+ constructor(){this.v=[];this.i=[];}
+ vertex(p,n=[0,1,0],uv=[0,0]){const i=this.v.length/8;this.v.push(...p,...n,...uv);return i;}
+ tri(a,b,c,normal=null){const n=normal||norm(cross(sub(b,a),sub(c,a))),i=this.v.length/8;this.vertex(a,n,[0,0]);this.vertex(b,n,[1,0]);this.vertex(c,n,[1,1]);this.i.push(i,i+1,i+2);}
+ quad(a,b,c,d,normal=null){const n=normal||norm(cross(sub(b,a),sub(c,a))),i=this.v.length/8;this.vertex(a,n,[0,0]);this.vertex(b,n,[1,0]);this.vertex(c,n,[1,1]);this.vertex(d,n,[0,1]);this.i.push(i,i+1,i+2,i,i+2,i+3);}
+ geometry(){return new Geometry(this.v,this.i);}
+}
+function boxGeometry(){const b=new MeshBuilder();b.quad([-.5,-.5,.5],[.5,-.5,.5],[.5,.5,.5],[-.5,.5,.5]);b.quad([.5,-.5,-.5],[-.5,-.5,-.5],[-.5,.5,-.5],[.5,.5,-.5]);b.quad([.5,-.5,.5],[.5,-.5,-.5],[.5,.5,-.5],[.5,.5,.5]);b.quad([-.5,-.5,-.5],[-.5,-.5,.5],[-.5,.5,.5],[-.5,.5,-.5]);b.quad([-.5,.5,.5],[.5,.5,.5],[.5,.5,-.5],[-.5,.5,-.5]);b.quad([-.5,-.5,-.5],[.5,-.5,-.5],[.5,-.5,.5],[-.5,-.5,.5]);return b.geometry();}
+function cylinderGeometry(segments=16,topRadius=1){const b=new MeshBuilder();for(let i=0;i<segments;i++){const a=i/segments*TAU,c=(i+1)/segments*TAU,p=[Math.cos(a)*.5,-.5,Math.sin(a)*.5],q=[Math.cos(c)*.5,-.5,Math.sin(c)*.5],r=[Math.cos(c)*.5*topRadius,.5,Math.sin(c)*.5*topRadius],s=[Math.cos(a)*.5*topRadius,.5,Math.sin(a)*.5*topRadius];b.quad(q,p,s,r);b.tri([0,-.5,0],p,q,[0,-1,0]);if(topRadius>0)b.tri([0,.5,0],r,s,[0,1,0]);}return b.geometry();}
+function sphereGeometry(segments=16,rings=10){const b=new MeshBuilder();for(let j=0;j<=rings;j++){const p=j/rings*Math.PI;for(let i=0;i<=segments;i++){const t=i/segments*TAU,n=[Math.sin(p)*Math.cos(t),Math.cos(p),Math.sin(p)*Math.sin(t)];b.vertex(mul(n,.5),n,[i/segments,j/rings]);}}for(let j=0;j<rings;j++)for(let i=0;i<segments;i++){const a=j*(segments+1)+i,c=a+segments+1;b.i.push(a,a+1,c,c,a+1,c+1);}return b.geometry();}
+function pineFarGeometry(){const b=new MeshBuilder();for(let layer=0;layer<5;layer++){const y=layer*.17,r=.48*(1-layer*.16);const seg=11;for(let i=0;i<seg;i++){const a=i/seg*TAU,c=(i+1)/seg*TAU;const p=[Math.cos(a)*r,y+Math.sin(i*7)*.025,Math.sin(a)*r],q=[Math.cos(c)*r,y+Math.sin((i+1)*7)*.025,Math.sin(c)*r],top=[Math.cos(a+c)*.018,y+.35,Math.sin(a+c)*.018];b.tri(q,p,top);b.tri([0,y+.015,0],p,q,[0,-1,0]);}}return b.geometry();}
+/** Irregular branch whorls form real 3D silhouettes, rather than stacked cones. */
+function pineGeometry(){
+ const b=new MeshBuilder();
+ for(let layer=0;layer<14;layer++){
+  const y=layer/14,rad=.46*Math.pow(1-y,.83),count=layer>10?5:8;
+  for(let j=0;j<count;j++){
+   const a=j/count*TAU+layer*2.399,random=.74+.28*Math.sin(j*23.1+layer*37.7),r=rad*random;
+   const f=[Math.cos(a),0,Math.sin(a)],side=[-f[2],0,f[0]],root=[f[0]*r*.13,y+.026,f[2]*r*.13],tip=[f[0]*r,y-.034,f[2]*r];
+   for(let k=0;k<3;k++){
+    const t=.27+k*.24,width=rad*(.24-k*.047),p=[f[0]*r*t,y+.03-t*.07,f[2]*r*t];
+    const l=add(p,mul(side,width)),rr=add(p,mul(side,-width)),up=[p[0],p[1]+rad*.075,p[2]];
+    const end=[f[0]*r*Math.min(1,t+.35),tip[1]-.025*Math.sin(k*19+j),f[2]*r*Math.min(1,t+.35)];
+    b.tri(l,up,end);b.tri(up,rr,end);
+   }
+  }
+ }
+ return b.geometry();
+}
+function foliageGeometry(){const base=sphereGeometry(14,9),v=base.vertices;for(let i=0;i<v.length;i+=8){const n=[v[i],v[i+1],v[i+2]],r=.83+.11*Math.sin(n[0]*34+n[1]*21)+.12*Math.sin(n[2]*27+n[1]*35);v[i]*=r;v[i+1]*=r;v[i+2]*=r;}return base;}
+function bodyGeometry(){const b=new MeshBuilder(),ring=[[-.42,-.5],[.42,-.5],[.5,-.36],[.5,.31],[.4,.5],[-.4,.5],[-.5,.31],[-.5,-.36]];for(let i=0;i<ring.length;i++){const a=ring[i],c=ring[(i+1)%ring.length];b.quad([a[0],a[1],-.5],[c[0],c[1],-.5],[c[0],c[1],.5],[a[0],a[1],.5]);b.tri([0,0,.5],[a[0],a[1],.5],[c[0],c[1],.5],[0,0,1]);b.tri([0,0,-.5],[c[0],c[1],-.5],[a[0],a[1],-.5],[0,0,-1]);}return b.geometry();}
+function noseGeometry(){const b=new MeshBuilder();const rings=[[-.5,.48,.5,0],[.05,.45,.43,-.04],[.5,.24,.15,-.23],[.62,.09,.09,-.24]];const sides=12;for(let j=0;j<rings.length-1;j++){const [z,r,h,y]=rings[j],[z1,r1,h1,y1]=rings[j+1];for(let i=0;i<sides;i++){const t=i/sides*TAU,u=(i+1)/sides*TAU;b.quad([Math.cos(t)*r,Math.sin(t)*h+y,z],[Math.cos(u)*r,Math.sin(u)*h+y,z],[Math.cos(u)*r1,Math.sin(u)*h1+y1,z1],[Math.cos(t)*r1,Math.sin(t)*h1+y1,z1]);}}return b.geometry();}
+const PRIMITIVES={box:boxGeometry(),cylinder:cylinderGeometry(18),cone:cylinderGeometry(12,0),sphere:sphereGeometry(),pine:pineGeometry(),pineFar:pineFarGeometry(),foliage:foliageGeometry(),foliageFar:sphereGeometry(7,5),body:bodyGeometry(),nose:noseGeometry()};
+/** One instance = model matrix (64 B), linear material tint (16 B), material parameters (16 B). */
+class Batch {
+ constructor(geometry,{center=[0,0,0],radius=1e6,maxDistance=12000,castShadow=true,dynamic=false}={}){this.geometry=geometry;this.center=center;this.radius=radius;this.maxDistance=maxDistance;this.castShadow=castShadow;this.dynamic=dynamic;this.items=[];this.data=null;this.count=0;this.dirty=true;this.gpuBuffer=null;this.glBuffer=null;this.capacity=0;}
+ add(matrix,color=[1,1,1,1],props=[0,.65,0,0]){this.items.push(...matrix,...color,...props);this.count++;return this;}
+ finish(){this.data=new Float32Array(this.items);this.items=[];this.dirty=true;return this;}
+ reset(){this.items.length=0;this.count=0;}
+ flush(){const n=this.items.length;if(!this.data||this.data.length<n)this.data=new Float32Array(Math.max(n,(this.data?.length||256)*2));this.data.set(this.items);this.dirty=true;}
+ dispose(renderer){renderer?.disposeBatch(this);}
+}
+class SceneBuilder {
+ constructor(){this.batches=[];this.cells=new Map();this.geometry=PRIMITIVES;}
+ instance(name,p,scale,color,props=[0,.7,0,0],yaw=0,pitch=0,roll=0){const cx=Math.floor(p[0]/480),cz=Math.floor(p[2]/480),key=`${name}:${cx}:${cz}`;let batch=this.cells.get(key);if(!batch){batch=new Batch(this.geometry[name],{center:[cx*480+240,p[1],cz*480+240],radius:520,maxDistance:name==='pine'||name==='foliage'?3400:4200});this.cells.set(key,batch);this.batches.push(batch);}batch.radius=Math.max(batch.radius,Math.hypot(p[0]-batch.center[0],p[1]-batch.center[1],p[2]-batch.center[2])+Math.hypot(...scale)*.6);batch.add(transform(p,scale,yaw,pitch,roll),color,props);return batch;}
+ oriented(name,matrix,color,props=[0,.7,0,0]){const p=[matrix[12],matrix[13],matrix[14]],cx=Math.floor(p[0]/480),cz=Math.floor(p[2]/480),key=`${name}:${cx}:${cz}`;let batch=this.cells.get(key);if(!batch){batch=new Batch(this.geometry[name],{center:[cx*480+240,p[1],cz*480+240],radius:520,maxDistance:3600});this.cells.set(key,batch);this.batches.push(batch);}batch.radius=Math.max(batch.radius,Math.hypot(p[0]-batch.center[0],p[1]-batch.center[1],p[2]-batch.center[2])+Math.hypot(matrix[0],matrix[1],matrix[2],matrix[4],matrix[5],matrix[6],matrix[8],matrix[9],matrix[10])*.6);batch.add(matrix,color,props);return batch;}
+ segment(a,b,width,color,props=[0,.65,0,0],depth=width){const mid=mul(add(a,b),.5),m=frameMatrix(mid,sub(b,a),[width,depth,length(sub(b,a))]);return this.oriented('box',m,color,props);}
+ mesh(geometry,center=[0,0,0],radius=1000,props=[0,.8,0,0],color=[1,1,1,1]){const batch=new Batch(geometry,{center,radius});batch.add(transform([0,0,0]),color,props).finish();this.batches.push(batch);return batch;}
+ finish(){const lod=[];for(const b of this.cells.values()){b.finish();if(b.geometry===this.geometry.pine||b.geometry===this.geometry.foliage){const isPine=b.geometry===this.geometry.pine;b.lodNear=isPine?600:700;const far=new Batch(isPine?this.geometry.pineFar:this.geometry.foliageFar,{center:b.center,radius:b.radius,maxDistance:b.maxDistance});far.data=b.data;far.count=b.count;far.lodFar=b.lodNear;lod.push(far);}}this.batches.push(...lod);this.cells.clear();return this.batches;}
+}
+
+return {Geometry,MeshBuilder,boxGeometry,cylinderGeometry,sphereGeometry,pineFarGeometry,pineGeometry,foliageGeometry,bodyGeometry,noseGeometry,PRIMITIVES,Batch,SceneBuilder};
+})();
+// ---- src/world-life.js ----
+const __m_src_world_life_js = (() => {
+const {Batch,Geometry,MeshBuilder,PRIMITIVES} = __m_src_geometry_js;
+const {rng,hex,transform,add,mul,norm,sub,frameMatrix,mat4Mul,TAU,lerp} = __m_src_math_js;
+/** Deterministic scenic animation. Nothing here mutates the rail connectivity graph. */
+
+
+PRIMITIVES.birdWing=new Geometry([0,0,0,0,1,0,0,0,.90,.015,-.15,0,1,0,1,0,1.35,0,.36,0,1,0,1,1,.35,0,.21,0,1,0,0,1],[0,1,2,0,2,3]);
+function flockPose(flock,time,index){
+ const phase=flock.phase+index*.21,t=time*flock.speed+phase,r=flock.radius+index*3;
+ return {position:[flock.x+Math.cos(t)*r,flock.y+Math.sin(t*.63+index)*5,flock.z+Math.sin(t)*r*.62],yaw:-t,flap:Math.sin(time*4.7+phase*3)*.43};
+}
+class WorldLife {
+ constructor(){this.wings=new Batch(PRIMITIVES.birdWing,{dynamic:true,castShadow:false});this.bodies=new Batch(PRIMITIVES.sphere,{dynamic:true,castShadow:false});this.flocks=[];this.visibleBirds=0;}
+ reset(world){
+  const random=rng(world.seed^0x54ea2c1);this.flocks=[];
+  for(const edge of world.network.edges.values())for(let i=0;i<8;i++){
+   const p=edge.at(random()*edge.length),x=p.p[0]+(random()-.5)*600,z=p.p[2]+(random()-.5)*600;
+   const y=Math.max(world.height(x,z),world.def.water)+40+random()*95;
+   this.flocks.push({x,y,z,radius:35+random()*70,phase:random()*TAU,speed:.065+random()*.08,count:3+(i%3)});
+  }
+ }
+ update(world,camera,time,quality='high',enabled=true){
+  this.wings.reset();this.bodies.reset();this.visibleBirds=0;const max=quality==='low'?12:quality==='medium'?32:80;
+  if(enabled)for(const f of this.flocks){
+   if(Math.hypot(f.x-camera.position[0],f.z-camera.position[2])>1200)continue;
+   for(let i=0;i<f.count&&this.visibleBirds<max;i++){
+    const p=flockPose(f,time,i),base=transform(p.position,[1,1,1],p.yaw),color=world.def.theme==='coast'?hex('#d5d8cd'):hex('#393f3b');
+    for(const side of [-1,1])this.wings.add(mat4Mul(base,transform([0,0,0],[side,1,1],0,0,p.flap*side)),color,[0,.9,0,0]);
+    this.bodies.add(mat4Mul(base,transform([0,-.08,.12],[.23,.22,.66])),color,[0,.9,0,0]);this.visibleBirds++;
+   }
+  }
+  for(const b of [this.wings,this.bodies]){b.center=camera.position;b.radius=1500;b.flush();}
+  return [this.wings,this.bodies];
+ }
+}
+
+/** Marching-square shoreline ribbons from the actual eroded field, not a radial shore.
+ * Ambiguous cells generate two separate segments, never a long crossed quad.
+ */
+function shoreSegments(field,water){
+ const segments=[],n=field.size,h=field.heights,step=field.step,half=field.half;
+ const position=(x,z)=>[x*step-half,water+.10,z*step-half];
+ for(let z=0;z<n-1;z++)for(let x=0;x<n-1;x++){
+  const points=[[x,z],[x+1,z],[x+1,z+1],[x,z+1]],hits=[];
+  for(let i=0;i<4;i++){
+   const a=points[i],b=points[(i+1)%4],ha=h[a[1]*n+a[0]]-water,hb=h[b[1]*n+b[0]]-water;
+   if((ha<0)===(hb<0))continue;
+   const t=ha/(ha-hb);hits.push(position(lerp(a[0],b[0],t),lerp(a[1],b[1],t)));
+  }
+  for(let i=0;i+1<hits.length;i+=2)segments.push([hits[i],hits[i+1]]);
+ }
+ return segments;
+}
+function buildShoreline(world){
+ if(!world.terrain)return;
+ // Brush edits are intentionally sparse; resample only when the editor changed relief.
+ const field=world.editor.heightEdits?.length?{...world.terrain,heights:Float32Array.from(world.terrain.heights,(_,i)=>world.height((i%world.terrain.size)*world.terrain.step-world.terrain.half,Math.floor(i/world.terrain.size)*world.terrain.step-world.terrain.half))}:world.terrain;
+ const segments=shoreSegments(field,world.def.water),tiles=new Map();
+ for(const [a,b] of segments){
+  const dx=b[0]-a[0],dz=b[2]-a[2],length=Math.hypot(dx,dz);if(length<.1)continue;
+  const normal=[-dz/length,0,dx/length],width=world.def.theme==='coast'?3:1.3;
+  const center=mul(add(a,b),.5),key=`${Math.floor(center[0]/640)}:${Math.floor(center[2]/640)}`;
+  let tile=tiles.get(key);if(!tile){tile={mesh:new MeshBuilder(),center};tiles.set(key,tile);}
+  tile.mesh.quad(add(a,mul(normal,-width)),add(b,mul(normal,-width)),add(b,mul(normal,width)),add(a,mul(normal,width)),[0,1,0]);
+ }
+ for(const {mesh,center} of tiles.values()){
+  const b=world.builder.mesh(mesh.geometry(),center,950,[10,.4,0,.1],[.72,.83,.83,.35]);b.castShadow=false;b.transparent=true;b.maxDistance=4200;
+ }
+ world.features.shoreSegments=segments.length;
+}
+
+return {flockPose,WorldLife,shoreSegments,buildShoreline};
+})();
+// ---- src/cinematic-ui.js ----
+const __m_src_cinematic_ui_js = (() => {
+const {postOptions,LOOKS} = __m_src_postprocess_js;
+const {cleanJourney} = __m_src_journey_js;
+
+
+const $=id=>document.getElementById(id);
+const escape=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function installCinematicUI(app){
+ const photo=document.createElement('button');photo.id='photo-mode';photo.textContent='Studio';photo.title='Photo studio (F2)';photo.onclick=()=>togglePhotoMode(app);$('photo').after(photo);
+ const journey=document.createElement('button');journey.id='journey-open';journey.textContent='Journey';journey.onclick=()=>app.ui.openPanel('journey');photo.after(journey);
+ const coach=document.createElement('button');coach.id='driver-coach';coach.className='driver-coach';coach.setAttribute('aria-label','Open route guidance and journey telemetry');coach.innerHTML='<span id="coach-message">Route guidance</span><span class="coach-metrics"><b id="coach-stop">0 m</b> service stop <b id="coach-score">100</b> driving score</span>';coach.onclick=()=>app.ui.openPanel('journey');document.querySelector('.journey-card').append(coach);
+ const studio=document.createElement('section');studio.id='photo-studio';studio.className='photo-studio glass hidden';studio.setAttribute('aria-label','Photo studio');
+ studio.innerHTML=`<div class="studio-title"><span>PHOTO STUDIO <small>WASD · drag to look</small></span><button id="photo-exit" class="secondary">Exit · Esc</button></div><div class="studio-fields"><label>Lens <input id="photo-fov" type="range" min="24" max="90" step="1" value="56"></label><label>Exposure <input id="photo-exposure" type="range" min="0.5" max="1.8" step="0.01" value="1"></label><label>Look <select id="photo-look">${Object.keys(LOOKS).map(l=>`<option>${l}</option>`).join('')}</select></label><button class="primary" id="photo-capture">Capture PNG</button></div>`;
+ document.body.append(studio);$('photo-exit').onclick=()=>togglePhotoMode(app,false);$('photo-capture').onclick=()=>app.photo();
+ $('photo-fov').oninput=e=>app.camera.fov=Number(e.target.value);$('photo-exposure').oninput=e=>app.env.exposure=Number(e.target.value);
+ $('photo-look').onchange=e=>{app.settings.cinematic.look=e.target.value;app.applySettings();};
+}
+/** Capture owned camera state without aliasing mutable vectors. */
+function snapshotPhotoCamera(camera){
+ const state={};
+ for(const key of ['mode','fov','distance','azimuth','elevation','cabYaw','cabPitch','freeYaw','freePitch','photoOrbit'])state[key]=camera[key];
+ for(const key of ['position','target','trackAnchor'])state[key]=camera[key]?camera[key].slice():null;
+ return state;
+}
+function restorePhotoCamera(camera,state){
+ camera.setMode(state.mode);
+ for(const [key,value] of Object.entries(state))camera[key]=Array.isArray(value)?value.slice():value;
+ camera.initial=true;
+}
+function togglePhotoMode(app,on=!app.photoMode){
+ if(!app.ready||on===!!app.photoMode)return;
+ if(on){
+  if(app.ui.dialog.open)app.ui.closePanel();
+  app.photoState={paused:app.paused,camera:snapshotPhotoCamera(app.camera)};app.paused=true;app.keys.clear();app.camera.setMode('free');app.photoMode=true;
+  $('photo-fov').value=app.camera.fov;$('photo-exposure').value=app.env.exposure;$('photo-look').value=app.settings.cinematic.look;
+ }else{
+  app.photoMode=false;app.paused=app.photoState.paused;restorePhotoCamera(app.camera,app.photoState.camera);app.photoState=null;app.keys.clear();
+ }
+ document.body.classList.toggle('photo-mode',app.photoMode);$('photo-studio').classList.toggle('hidden',!app.photoMode);
+ app.accumulator=0;app.ui.update();
+}
+function cinematicPanel(ui){
+ const a=ui.app,s=a.settings,o=postOptions(s.cinematic);
+ $('panel-content').innerHTML=`<div class="panel-two-column"><section class="panel-section"><h3>Lighting & display</h3><p class="map-note">Linear-light scene, multisample antialiasing, soft bloom and a single filmic display transform. The low quality preset omits bloom.</p><label class="field"><span>Color grade</span><select id="cin-look">${Object.keys(LOOKS).map(l=>`<option value="${l}" ${l===o.look?'selected':''}>${l}</option>`).join('')}</select></label>${ui.field('Bloom','cin-bloom',0,100,1,Math.round(o.bloom*100),'%')}${ui.field('Vignette','cin-vignette',0,60,1,Math.round(o.vignette*100),'%')}${ui.field('Film grain','cin-grain',0,15,1,Math.round(o.grain*100),'%')}<div class="panel-notice">Scene: <b>${a.renderer.post.hdr?'16-bit floating-point HDR':'LDR compatibility'}</b> · post passes: ${a.renderer.post.passCount} · renderer: ${a.renderer.kind}</div></section><section class="panel-section"><h3>Immersion & comfort</h3>${ui.toggle('Scenic wildlife','cin-wildlife',s.wildlife,'Deterministic flocks; no effect on train physics.')}${ui.toggle('Environmental audio','cin-ambience',s.ambience,'Weather and occasional birds. Train sounds remain independent.')}${ui.toggle('Camera motion','cin-motion',s.cameraMotion,'Subtle cab suspension. Disable for reduced motion.')}${ui.toggle('Driving coach','cin-coach',s.coach,'Read-only stopping guidance and route profile.')}<div class="button-row"><button class="primary" id="cin-studio">Open photo studio</button><button class="secondary" id="cin-journey">Journey telemetry</button></div><p class="map-note">F2 enters photo mode; Escape exits. Photo mode pauses the simulation and restores your previous camera and pause state. Color grade and exposure adjustments remain selected.</p></section></div>`;
+ $('cin-look').onchange=e=>{s.cinematic.look=e.target.value;a.applySettings();};
+ for(const key of ['bloom','vignette','grain'])ui.bindRange('cin-'+key,v=>{s.cinematic[key]=v/100;a.applySettings();},v=>v+'%');
+ for(const [id,key] of [['wildlife','wildlife'],['ambience','ambience'],['motion','cameraMotion'],['coach','coach']])$('cin-'+id).onchange=e=>{s[key]=e.target.checked;a.applySettings();};
+ $('cin-studio').onclick=()=>{ui.closePanel();togglePhotoMode(a,true);};$('cin-journey').onclick=()=>ui.openPanel('journey');
+}
+function journeyPanel(ui){
+ const a=ui.app,j=a.journey;
+ j.survey(a.player,a.world,a.env,a.currentLimit,a.mission);
+ $('panel-content').innerHTML=`<section class="panel-section"><h3>Reading the railway</h3><p id="journey-guidance">${escape(j.guidance.message)}</p><canvas id="route-profile" width="1000" height="230" aria-label="Elevation and speed limits ahead"></canvas><p class="map-note">Solid line: terrain elevation along the railway. Dashed line: posted speed. Amber area: estimated service stopping distance. Distances are measured along your selected route, including the turnout.</p></section><div class="journey-stats"><div><b>${(j.stats.distance/1000).toFixed(2)}</b><span>km driven</span></div><div><b>${j.score}</b><span>driving score / 100</span></div><div><b>${Math.floor(j.stats.seconds/60)}</b><span>minutes driven</span></div><div><b>${j.stats.energy.toFixed(1)}</b><span>traction kWh</span></div><div><b>${j.stats.stops}</b><span>station door openings</span></div></div><div class="panel-notice">Advisory only. The stopping estimate includes train-length brake propagation, gradient and wet adhesion; it is not a guarantee. Automatic train protection remains independent. Score measures time spent overspeeding or driving harshly.</div><div class="button-row"><button class="primary" id="journey-continue">Return to cab</button><button class="secondary" id="journey-reset">Reset journey statistics</button><button class="secondary" id="journey-look">Display & immersion</button></div>`;
+ drawProfile(a);$('journey-continue').onclick=()=>ui.closePanel();$('journey-look').onclick=()=>ui.openPanel('cinematic');
+ $('journey-reset').onclick=()=>{a.journey.reset(cleanJourney());journeyPanel(ui);};
+}
+function drawProfile(app){
+ const canvas=$('route-profile'),points=app.journey.profile;if(!canvas||!points.length)return;
+ const c=canvas.getContext('2d'),w=canvas.width,h=canvas.height,pad=38,range=points.at(-1).distance;
+ const min=Math.min(...points.map(p=>p.height)),max=Math.max(...points.map(p=>p.height));c.clearRect(0,0,w,h);c.fillStyle='#152820';c.fillRect(0,0,w,h);
+ const x=d=>pad+d/range*(w-pad*2),y=v=>h-pad-(v-min)/Math.max(15,max-min)*(h-pad*2);
+ c.fillStyle='#d3ad6130';c.fillRect(pad,pad,Math.min(w-pad*2,app.journey.guidance.stoppingDistance/range*(w-pad*2)),h-pad*2);
+ c.strokeStyle='#a6be9633';c.lineWidth=1;c.fillStyle='#b7c5ad';c.font='13px system-ui';
+ for(let i=0;i<=4;i++){const xx=x(i*range/4);c.beginPath();c.moveTo(xx,pad);c.lineTo(xx,h-pad);c.stroke();c.fillText(Math.round(i*range/4)+' m',xx-15,h-12);}
+ c.strokeStyle='#c9dcba';c.lineWidth=2.5;c.beginPath();points.forEach((p,i)=>i?c.lineTo(x(p.distance),y(p.height)):c.moveTo(x(p.distance),y(p.height)));c.stroke();
+ c.setLineDash([7,5]);c.strokeStyle='#d1b080';c.lineWidth=1.5;c.beginPath();points.forEach((p,i)=>{const yy=h-pad-p.limit/app.player.stock.maxSpeed*(h-pad*2);i?c.lineTo(x(p.distance),yy):c.moveTo(x(p.distance),yy);});c.stroke();c.setLineDash([]);
+ c.fillText(`${Math.round(max)} m elevation`,pad+8,22);
+}
+function updateCinematicUI(app){
+ if(!$('driver-coach'))return;const j=app.journey,g=j.guidance;
+ $('driver-coach').hidden=app.settings.coach===false;
+ $('coach-message').textContent=g.brake?'Brake early · '+g.message:g.message;
+ $('coach-stop').textContent=Math.round(g.stoppingDistance||0)+' m';$('coach-score').textContent=j.score;
+ $('driver-coach').classList.toggle('braking-advice',!!g.brake);
+}
+
+return {installCinematicUI,snapshotPhotoCamera,restorePhotoCamera,togglePhotoMode,cinematicPanel,journeyPanel,drawProfile,updateCinematicUI};
 })();
 // ---- src/shaders.js ----
 const __m_src_shaders_js = (() => {
@@ -192,7 +663,7 @@ struct Frame {
 fn hash(p:vec2f)->f32 { return fract(sin(dot(p,vec2f(127.1,311.7)))*43758.5453); }
 fn noise(p:vec2f)->f32 {let i=floor(p); let a=fract(p);let f=a*a*(vec2f(3.)-2.*a);return mix(mix(hash(i),hash(i+vec2f(1,0)),f.x),mix(hash(i+vec2f(0,1)),hash(i+vec2f(1,1)),f.x),f.y);}
 fn fbm(p0:vec2f)->f32 {var p=p0;var n=0.;var a=.5;for(var i=0;i<4;i++){n+=noise(p)*a;p=p*2.03+vec2f(13.4,7.1);a*=.5;}return n;}
-fn aces(c:vec3f)->vec3f {let x=max(c*u.sunExposure.w,vec3f(0));return pow(clamp((x*(2.51*x+vec3f(.03)))/(x*(2.43*x+vec3f(.59))+vec3f(.14)),vec3f(0),vec3f(1)),vec3f(1./2.2));}
+fn aces(c:vec3f)->vec3f {return clamp(c,vec3f(0),vec3f(128));}
 fn atmosphere(rd:vec3f,clouds:bool)->vec3f {
  let day=u.sunDay.w;let h=clamp(rd.y*.8+.18,0.,1.);let horizon=mix(vec3f(.018,.027,.055),pow(u.fog.rgb,vec3f(2.2))*.95,day);
  let zenith=mix(vec3f(.002,.005,.018),vec3f(.12,.30,.50),day);var sky=mix(horizon,zenith,pow(h,.6));
@@ -200,6 +671,13 @@ fn atmosphere(rd:vec3f,clouds:bool)->vec3f {
  sky+=vec3f(.52,.21,.065)*pow(sun,9.)*(1.-smoothstep(.18,.55,u.sunDay.y))*day;
  if(clouds && rd.y>0.){let uv=rd.xz/max(.07,rd.y)*1.6+vec2f(u.cameraTime.w*.0018,0);let n=fbm(uv);let cloud=smoothstep(.63-u.env.x*.38,.76-u.env.x*.4,n)*smoothstep(0.,.14,rd.y);sky=mix(sky,mix(vec3f(.038,.052,.07),vec3f(.76,.78,.76),day)*( .65+n*.55),cloud*.92);}
  if(day<.25&&rd.y>.05){let star=pow(hash(floor(rd.xz/(rd.y+.5)*1100.)),1800.);sky+=vec3f(star*(1.-day*4.));}
+ let moonDir=normalize(vec3f(-u.sunDay.x,.38,-u.sunDay.z));
+ let moon=dot(rd,moonDir);sky+=vec3f(.40,.48,.63)*smoothstep(.9991,.9997,moon)*(1.-day);
+ if(u.env.z>1.5&&u.env.z<2.5&&day<.3&&rd.y>.08){
+  let curtain=sin(rd.x*8.+rd.z*5.+sin(rd.z*11.+u.cameraTime.w*.03)*.6);
+  let ribbon=exp(-pow((rd.y-.34-curtain*.12)*12.,2.));
+  sky+=mix(vec3f(.04,.33,.16),vec3f(.15,.05,.27),rd.y)*ribbon*(1.-day)*(.6+noise(rd.xz*75.)*.4);
+ }
  return sky;
 }
 `;
@@ -245,15 +723,19 @@ fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.
  }
  if(kind>5.5&&kind<6.5){col*=.89+noise((v.world.xz+vec2f(v.world.y*.71,v.world.y*.31))*5.)*.16;}
  if(kind>6.5&&kind<7.5){let grit=hash(floor(v.world.xz*23.));col*=.7+grit*.6;}
- let light=u.sunDay.xyz;let ndl=max(0.,dot(n,light));let visibility=shadeShadow(v.light,n);let hemi=mix(vec3f(.09,.105,.1),vec3f(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);
+ let light=u.sunDay.xyz;let ndl=max(0.,dot(n,light));let visibility=shadeShadow(v.light,n);let hemi=mix(vec3f(.09,.105,.1),vec3f(.24,.30,.37),n.y*.5+.5)*mix(.12,1.,u.sunDay.w);
  let sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);
- let halfV=normalize(light+view);let ndh=max(0.,dot(n,halfV));let r=max(.06,rough);let alpha=r*r;let a2=alpha*alpha;let den=ndh*ndh*(a2-1.)+1.;let D=a2/(3.14159*den*den+.0001);let F=mix(vec3f(.035),col,metal)+(vec3f(1.)-mix(vec3f(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);let spec=F*D*.23;
- var color=col*(hemi+sun*(1.-metal*.65))+spec*sun;
+ let halfV=normalize(light+view);let ndh=max(0.,dot(n,halfV));let r=max(.06,rough);let alpha=r*r;let a2=alpha*alpha;let den=ndh*ndh*(a2-1.)+1.;let D=a2/(3.14159*den*den+.0001);let F=mix(vec3f(.035),col,metal)+(vec3f(1.)-mix(vec3f(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);let nv=max(.02,dot(n,view));let k=(r+1.)*(r+1.)/8.;
+ let G=nv/(nv*(1.-k)+k)*ndl/max(.001,ndl*(1.-k)+k);
+ let spec=F*D*G/max(.04,4.*nv*max(ndl,.02));
+ let cloudShadow=mix(1.,.70,smoothstep(.42,.75,fbm(v.world.xz*.00032+u.cameraTime.w*.0015))*u.env.x);
+ var color=col*hemi+((vec3f(1.)-F)*col*(1.-metal)/3.14159+spec)*sun*3.0*cloudShadow;
  if(kind>2.5&&kind<3.5){let refl=atmosphere(reflect(-view,n),false);let fr=.24+.65*pow(1.-max(0.,dot(n,view)),4.);color=mix(col*.4,refl,fr)+spec*sun*.35;}
  if(kind>1.5&&kind<2.5){let t=u.cameraTime.w;let wave=sin(v.world.x*.11+t*.9)*.05+sin(v.world.z*.17-t*.7)*.035; n=normalize(vec3f(wave,1.,cos(v.world.z*.09+t*.7)*.06));let fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);let reflection=atmosphere(reflect(-view,n),true);let sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;color=mix(pow(v.color.rgb,vec3f(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){color*=.7+noise(v.world.xz*3.1+vec2f(v.world.y*1.7))*.38;color+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}
  if(u.headPos.w>.01){let delta=v.world-u.headPos.xyz;let d=length(delta);let cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));color+=col*vec3f(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
  if(kind>8.5&&kind<9.5){let foam=.64+.36*noise(vec2f(v.world.x*1.2,v.world.y*.24+u.cameraTime.w*2.8));color=mix(color,vec3f(.64,.79,.82)*foam,.7);}
+ if(kind>9.5&&kind<10.5){let crest=.65+.35*sin(v.world.x*.09+v.world.z*.12-u.cameraTime.w*1.2);color=mix(color,vec3f(.65,.79,.79),crest*.72);}
  color+=col*emissive;
  let distance=length(v.world-u.cameraTime.xyz);let heightFog=exp(-max(v.world.y-u.env.w,0.)*.00085);let fog=1.-exp(-distance*u.fog.w*heightFog);color=mix(color,atmosphere(normalize(v.world-u.cameraTime.xyz),false),clamp(fog,0.,.99));
  return vec4f(aces(color),select(1.,v.color.a,kind>7.5));
@@ -270,9 +752,15 @@ layout(std140) uniform Frame {mat4 vp;mat4 invVP;mat4 lightVP;vec4 cameraTime;ve
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float noise(vec2 p){vec2 i=floor(p),a=fract(p),f=a*a*(3.-2.*a);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
 float fbm(vec2 p){float n=0.,a=.5;for(int i=0;i<4;i++){n+=noise(p)*a;p=p*2.03+vec2(13.4,7.1);a*=.5;}return n;}
-vec3 aces(vec3 c){vec3 x=max(c*u.sunExposure.w,vec3(0));return pow(clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.),vec3(1./2.2));}
+vec3 aces(vec3 c){
+#ifdef RAILBOUND_LDR_SCENE
+ vec3 x=max(c*u.sunExposure.w,vec3(0));return pow(clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.),vec3(1./2.2));
+#else
+ return clamp(c,0.,128.);
+#endif
+}
 vec3 atmosphere(vec3 rd,bool clouds){float day=u.sunDay.w,h=clamp(rd.y*.8+.18,0.,1.);vec3 horizon=mix(vec3(.018,.027,.055),pow(u.fog.rgb,vec3(2.2))*.95,day),zenith=mix(vec3(.002,.005,.018),vec3(.12,.30,.50),day);vec3 sky=mix(horizon,zenith,pow(h,.6));float sun=max(0.,dot(rd,u.sunDay.xyz));sky+=u.sunExposure.rgb*(pow(sun,1400.)*5.+pow(sun,22.)*.12)*day;sky+=vec3(.52,.21,.065)*pow(sun,9.)*(1.-smoothstep(.18,.55,u.sunDay.y))*day;
- if(clouds&&rd.y>0.){vec2 uv=rd.xz/max(.07,rd.y)*1.6+vec2(u.cameraTime.w*.0018,0);float n=fbm(uv),cloud=smoothstep(.63-u.env.x*.38,.76-u.env.x*.4,n)*smoothstep(0.,.14,rd.y);sky=mix(sky,mix(vec3(.038,.052,.07),vec3(.76,.78,.76),day)*(.65+n*.55),cloud*.92);}if(day<.25&&rd.y>.05){float star=pow(hash(floor(rd.xz/(rd.y+.5)*1100.)),1800.);sky+=vec3(star*(1.-day*4.));}return sky;}
+ if(clouds&&rd.y>0.){vec2 uv=rd.xz/max(.07,rd.y)*1.6+vec2(u.cameraTime.w*.0018,0);float n=fbm(uv),cloud=smoothstep(.63-u.env.x*.38,.76-u.env.x*.4,n)*smoothstep(0.,.14,rd.y);sky=mix(sky,mix(vec3(.038,.052,.07),vec3(.76,.78,.76),day)*(.65+n*.55),cloud*.92);}if(day<.25&&rd.y>.05){float star=pow(hash(floor(rd.xz/(rd.y+.5)*1100.)),1800.);sky+=vec3(star*(1.-day*4.));}vec3 moonDir=normalize(vec3(-u.sunDay.x,.38,-u.sunDay.z));float moon=dot(rd,moonDir);sky+=vec3(.40,.48,.63)*smoothstep(.9991,.9997,moon)*(1.-day);if(u.env.z>1.5&&u.env.z<2.5&&day<.3&&rd.y>.08){float curtain=sin(rd.x*8.+rd.z*5.+sin(rd.z*11.+u.cameraTime.w*.03)*.6),ribbon=exp(-pow((rd.y-.34-curtain*.12)*12.,2.));sky+=mix(vec3(.04,.33,.16),vec3(.15,.05,.27),rd.y)*ribbon*(1.-day)*(.6+noise(rd.xz*75.)*.4);}return sky;}
 `;
 const GLSL_SKY_VS=`#version 300 es
 precision highp float;out vec2 ndc;void main(){vec2 p=gl_VertexID==0?vec2(-1,-1):gl_VertexID==1?vec2(3,-1):vec2(-1,3);ndc=p;gl_Position=vec4(p,.99999,1);}`;
@@ -308,12 +796,13 @@ void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=
  }
  if(kind>5.5&&kind<6.5)col*=.89+noise((world.xz+vec2(world.y*.71,world.y*.31))*5.)*.16;
  if(kind>6.5&&kind<7.5)col*=.7+hash(floor(world.xz*23.))*.6;
- vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(lightPos,n);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);vec3 spec=F*D*.23;vec3 result=col*(hemi+sun*(1.-metal*.65))+spec*sun;
+ vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(lightPos,n);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.12,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);float nv=max(.02,dot(n,view)),k=(r+1.)*(r+1.)/8.,G=nv/(nv*(1.-k)+k)*ndl/max(.001,ndl*(1.-k)+k);vec3 spec=F*D*G/max(.04,4.*nv*max(ndl,.02));float cloudShadow=mix(1.,.70,smoothstep(.42,.75,fbm(world.xz*.00032+u.cameraTime.w*.0015))*u.env.x);vec3 result=col*hemi+((vec3(1.)-F)*col*(1.-metal)/3.14159+spec)*sun*3.0*cloudShadow;
  if(kind>2.5&&kind<3.5){vec3 refl=atmosphere(reflect(-view,n),false);float fr=.24+.65*pow(1.-max(0.,dot(n,view)),4.);result=mix(col*.4,refl,fr)+spec*sun*.35;}
  if(kind>1.5&&kind<2.5){float t=u.cameraTime.w,wave=sin(world.x*.11+t*.9)*.05+sin(world.z*.17-t*.7)*.035;n=normalize(vec3(wave,1.,cos(world.z*.09+t*.7)*.06));float fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);vec3 reflection=atmosphere(reflect(-view,n),true);float sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;result=mix(pow(color.rgb,vec3(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){result*=.7+noise(world.xz*3.1+vec2(world.y*1.7))*.38;result+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}
  if(u.headPos.w>.01){vec3 delta=world-u.headPos.xyz;float d=length(delta),cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));result+=col*vec3(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
  if(kind>8.5&&kind<9.5){float foam=.64+.36*noise(vec2(world.x*1.2,world.y*.24+u.cameraTime.w*2.8));result=mix(result,vec3(.64,.79,.82)*foam,.7);}
+ if(kind>9.5&&kind<10.5){float crest=.65+.35*sin(world.x*.09+world.z*.12-u.cameraTime.w*1.2);result=mix(result,vec3(.65,.79,.79),crest*.72);}
  result+=col*emissive;float distance=length(world-u.cameraTime.xyz),heightFog=exp(-max(world.y-u.env.w,0.)*.00085),f=1.-exp(-distance*u.fog.w*heightFog);result=mix(result,atmosphere(normalize(world-u.cameraTime.xyz),false),clamp(f,0.,.99));outColor=vec4(aces(result),kind>7.5?color.a:1.);}`;
 const GLSL_SHADOW_VS=`#version 300 es\n`+GLSL_COMMON+`layout(location=0) in vec3 aPos;layout(location=3) in mat4 model;void main(){gl_Position=u.lightVP*model*vec4(aPos,1);}`;
 const GLSL_SHADOW_FS=`#version 300 es\nprecision highp float;void main(){}`;
@@ -322,17 +811,19 @@ return {WGSL_COMMON,WGSL_SKY,WGSL_VERTEX,WGSL_MAIN,WGSL_SHADOW,GLSL_COMMON,GLSL_
 })();
 // ---- src/renderer.js ----
 const __m_src_renderer_js = (() => {
+const {PostProcessor,targetSize} = __m_src_postprocess_js;
 const {mat4Mul,mat4Inverse,perspective,lookAt,orthographic,add,mul,norm,sub,length,dot,hex,clamp,smooth} = __m_src_math_js;
 const {WEATHER} = __m_src_data_js;
 const {WGSL_MAIN,WGSL_SKY,WGSL_SHADOW,GLSL_MAIN_VS,GLSL_MAIN_FS,GLSL_SKY_VS,GLSL_SKY_FS,GLSL_SHADOW_VS,GLSL_SHADOW_FS} = __m_src_shaders_js;
 
 
 
+
 const VERTEX_LAYOUT=[{arrayStride:32,attributes:[{shaderLocation:0,offset:0,format:'float32x3'},{shaderLocation:1,offset:12,format:'float32x3'},{shaderLocation:2,offset:24,format:'float32x2'}]},{arrayStride:96,stepMode:'instance',attributes:Array.from({length:6},(_,i)=>({shaderLocation:3+i,offset:i*16,format:'float32x4'}))}];
 class Renderer {
- constructor(canvas,onError=console.error){this.canvas=canvas;this.onError=onError;this.kind='Starting';this.frame=new Float32Array(88);this.drawCalls=0;this.triangles=0;this.shadowSize=1536;this.width=0;this.height=0;this.samples=4;this.lost=false;this.geometries=new Set();this.batches=new Set();this.settings={quality:'high',shadows:true,resolution:1};this.lastError=null;}
- async initialize(forceGL=false){if(!forceGL&&navigator.gpu&&globalThis.isSecureContext){try{await this.initGPU();return;}catch(e){console.warn('WebGPU initialization failed; trying WebGL 2.',e);this.lastError=e.message;if(this.device){this.device.destroy();this.device=null;}if(this.context){this.context.unconfigure();const next=this.canvas.cloneNode();this.canvas.replaceWith(next);this.canvas=next;this.context=null;}}}this.initGL();}
- async initGPU(){const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw new Error('No WebGPU adapter available.');this.device=await adapter.requestDevice();const d=this.device;this.device.lost.then(info=>{if(info.reason==='destroyed')return;this.lost=true;this.onError(`Graphics device lost: ${info.message||info.reason}. Reload to recover.`);});d.addEventListener('uncapturederror',e=>{console.error(e.error);this.onError(e.error.message);});this.context=this.canvas.getContext('webgpu');if(!this.context)throw new Error('WebGPU canvas context unavailable');this.format=navigator.gpu.getPreferredCanvasFormat();this.context.configure({device:d,format:this.format,alphaMode:'opaque'});
+ constructor(canvas,onError=console.error){this.canvas=canvas;this.onError=onError;this.kind='Starting';this.frame=new Float32Array(88);this.drawCalls=0;this.triangles=0;this.shadowSize=1536;this.width=0;this.height=0;this.samples=4;this.lost=false;this.geometries=new Set();this.batches=new Set();this.settings={quality:'high',shadows:true,resolution:1};this.lastError=null;this.post=new PostProcessor();this.sceneFormat='rgba16float';}
+ async initialize(forceGL=false){if(!forceGL&&navigator.gpu&&globalThis.isSecureContext){try{await this.initGPU();return;}catch(e){console.warn('WebGPU initialization failed; trying WebGL 2.',e);this.lastError=e.message;if(this.device){this.device.destroy();this.device=null;}if(this.context){this.context.unconfigure();const next=this.canvas.cloneNode();this.canvas.replaceWith(next);this.canvas=next;this.context=null;}}this.post.dispose();this.post=new PostProcessor();}this.initGL();}
+ async initGPU(){const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});if(!adapter)throw new Error('No WebGPU adapter available.');this.device=await adapter.requestDevice();const d=this.device;this.device.lost.then(info=>{if(info.reason==='destroyed')return;this.lost=true;this.onError(`Graphics device lost: ${info.message||info.reason}. Reload to recover.`);});d.addEventListener('uncapturederror',e=>{console.error(e.error);this.onError(e.error.message);});this.context=this.canvas.getContext('webgpu');if(!this.context)throw new Error('WebGPU canvas context unavailable');this.format=navigator.gpu.getPreferredCanvasFormat();this.context.configure({device:d,format:this.format,alphaMode:'opaque'});await this.post.initGPU(d,this.format);
   this.uniform=d.createBuffer({size:this.frame.byteLength,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
   this.shadowTexture=d.createTexture({size:[this.shadowSize,this.shadowSize],format:'depth32float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});this.shadowView=this.shadowTexture.createView();this.sampler=d.createSampler({compare:'less-equal',magFilter:'linear',minFilter:'linear'});
   const basicLayout=d.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.VERTEX|GPUShaderStage.FRAGMENT,buffer:{type:'uniform'}}]});
@@ -340,14 +831,14 @@ class Renderer {
   this.basicGroup=d.createBindGroup({layout:basicLayout,entries:[{binding:0,resource:{buffer:this.uniform}}]});this.mainGroup=d.createBindGroup({layout:mainLayout,entries:[{binding:0,resource:{buffer:this.uniform}},{binding:1,resource:this.shadowView},{binding:2,resource:this.sampler}]});
   const modules=[];for(const code of [WGSL_MAIN,WGSL_SKY,WGSL_SHADOW]){const module=d.createShaderModule({code});const info=await module.getCompilationInfo();const errors=info.messages.filter(m=>m.type==='error');if(errors.length)throw new Error(errors.map(m=>`${m.lineNum}:${m.linePos} ${m.message}`).join('\n'));modules.push(module);}
   const mainPipelineLayout=d.createPipelineLayout({bindGroupLayouts:[mainLayout]}),basicPipelineLayout=d.createPipelineLayout({bindGroupLayouts:[basicLayout]});
-  this.pipeline=await d.createRenderPipelineAsync({layout:mainPipelineLayout,vertex:{module:modules[0],entryPoint:'vs',buffers:VERTEX_LAYOUT},fragment:{module:modules[0],entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:true,depthCompare:'less'},multisample:{count:this.samples}});
-  this.particlePipeline=await d.createRenderPipelineAsync({layout:mainPipelineLayout,vertex:{module:modules[0],entryPoint:'vs',buffers:VERTEX_LAYOUT},fragment:{module:modules[0],entryPoint:'fs',targets:[{format:this.format,blend:{color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha'}}}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:false,depthCompare:'less'},multisample:{count:this.samples}});
-  this.skyPipeline=await d.createRenderPipelineAsync({layout:basicPipelineLayout,vertex:{module:modules[1],entryPoint:'vs'},fragment:{module:modules[1],entryPoint:'fs',targets:[{format:this.format}]},primitive:{topology:'triangle-list'},depthStencil:{format:'depth32float',depthWriteEnabled:false,depthCompare:'always'},multisample:{count:this.samples}});
+  this.pipeline=await d.createRenderPipelineAsync({layout:mainPipelineLayout,vertex:{module:modules[0],entryPoint:'vs',buffers:VERTEX_LAYOUT},fragment:{module:modules[0],entryPoint:'fs',targets:[{format:this.sceneFormat}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:true,depthCompare:'less'},multisample:{count:this.samples}});
+  this.particlePipeline=await d.createRenderPipelineAsync({layout:mainPipelineLayout,vertex:{module:modules[0],entryPoint:'vs',buffers:VERTEX_LAYOUT},fragment:{module:modules[0],entryPoint:'fs',targets:[{format:this.sceneFormat,blend:{color:{srcFactor:'src-alpha',dstFactor:'one-minus-src-alpha'},alpha:{srcFactor:'one',dstFactor:'one-minus-src-alpha'}}}]},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:false,depthCompare:'less'},multisample:{count:this.samples}});
+  this.skyPipeline=await d.createRenderPipelineAsync({layout:basicPipelineLayout,vertex:{module:modules[1],entryPoint:'vs'},fragment:{module:modules[1],entryPoint:'fs',targets:[{format:this.sceneFormat}]},primitive:{topology:'triangle-list'},depthStencil:{format:'depth32float',depthWriteEnabled:false,depthCompare:'always'},multisample:{count:this.samples}});
   this.shadowPipeline=await d.createRenderPipelineAsync({layout:basicPipelineLayout,vertex:{module:modules[2],entryPoint:'vs',buffers:VERTEX_LAYOUT},primitive:{topology:'triangle-list',cullMode:'none'},depthStencil:{format:'depth32float',depthWriteEnabled:true,depthCompare:'less',depthBias:1,depthBiasSlopeScale:1.5}});
   this.kind='WebGPU';this.adapterInfo=adapter.info?`${adapter.info.vendor||''} ${adapter.info.architecture||''}`.trim():'WebGPU adapter';
  }
  initGL(){const g=this.canvas.getContext('webgl2',{alpha:false,antialias:true,powerPreference:'high-performance',preserveDrawingBuffer:true});if(!g)throw new Error('This browser does not expose WebGPU or WebGL 2. Enable hardware acceleration and reload.');this.gl=g;this.kind='WebGL 2';this.canvas.addEventListener('webglcontextlost',e=>{e.preventDefault();this.lost=true;this.onError('Graphics context lost. Reload to recover.');});
-  this.glMain=this.compileGL(GLSL_MAIN_VS,GLSL_MAIN_FS);this.glSky=this.compileGL(GLSL_SKY_VS,GLSL_SKY_FS);this.glShadow=this.compileGL(GLSL_SHADOW_VS,GLSL_SHADOW_FS);
+  this.post.initGL(g,(vs,fs)=>this.compileGL(vs,fs));const compatible=s=>this.post.hdr?s:s.replace('#version 300 es','#version 300 es\n#define RAILBOUND_LDR_SCENE');this.glMain=this.compileGL(GLSL_MAIN_VS,compatible(GLSL_MAIN_FS));this.glSky=this.compileGL(GLSL_SKY_VS,compatible(GLSL_SKY_FS));this.glShadow=this.compileGL(GLSL_SHADOW_VS,GLSL_SHADOW_FS);
   this.uniform=g.createBuffer();g.bindBuffer(g.UNIFORM_BUFFER,this.uniform);g.bufferData(g.UNIFORM_BUFFER,this.frame.byteLength,g.DYNAMIC_DRAW);g.bindBufferBase(g.UNIFORM_BUFFER,0,this.uniform);
   for(const program of [this.glMain,this.glSky,this.glShadow]){const index=g.getUniformBlockIndex(program,'Frame');if(index!==g.INVALID_INDEX)g.uniformBlockBinding(program,index,0);}
   this.shadowTexture=g.createTexture();g.bindTexture(g.TEXTURE_2D,this.shadowTexture);g.texImage2D(g.TEXTURE_2D,0,g.DEPTH_COMPONENT24,this.shadowSize,this.shadowSize,0,g.DEPTH_COMPONENT,g.UNSIGNED_INT,null);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MIN_FILTER,g.LINEAR);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_MAG_FILTER,g.LINEAR);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_S,g.CLAMP_TO_EDGE);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_WRAP_T,g.CLAMP_TO_EDGE);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_COMPARE_MODE,g.COMPARE_REF_TO_TEXTURE);g.texParameteri(g.TEXTURE_2D,g.TEXTURE_COMPARE_FUNC,g.LEQUAL);
@@ -355,9 +846,9 @@ class Renderer {
   g.useProgram(this.glMain);g.uniform1i(g.getUniformLocation(this.glMain,'shadowTex'),0);g.enable(g.DEPTH_TEST);g.disable(g.CULL_FACE);this.emptyVAO=g.createVertexArray();
  }
  compileGL(vs,fs){const g=this.gl,p=g.createProgram();for(const [type,source] of [[g.VERTEX_SHADER,vs],[g.FRAGMENT_SHADER,fs]]){const s=g.createShader(type);g.shaderSource(s,source);g.compileShader(s);if(!g.getShaderParameter(s,g.COMPILE_STATUS))throw new Error(g.getShaderInfoLog(s));g.attachShader(p,s);g.deleteShader(s);}g.linkProgram(p);if(!g.getProgramParameter(p,g.LINK_STATUS))throw new Error(g.getProgramInfoLog(p));return p;}
- resize(){const rect=this.canvas.getBoundingClientRect();const scale=Math.min(globalThis.devicePixelRatio||1,this.settings.quality==='ultra'?2:1.5)*this.settings.resolution;const max=this.device?.limits.maxTextureDimension2D||4096;const w=clamp(Math.floor(rect.width*scale),1,max),h=clamp(Math.floor(rect.height*scale),1,max);if(w===this.width&&h===this.height)return;this.width=this.canvas.width=w;this.height=this.canvas.height=h;if(this.device){this.colorMSAA?.destroy();this.depth?.destroy();this.colorMSAA=this.device.createTexture({size:[w,h],format:this.format,sampleCount:this.samples,usage:GPUTextureUsage.RENDER_ATTACHMENT});this.depth=this.device.createTexture({size:[w,h],format:'depth32float',sampleCount:this.samples,usage:GPUTextureUsage.RENDER_ATTACHMENT});}}
+ resize(){const rect=this.canvas.getBoundingClientRect();const scale=Math.min(globalThis.devicePixelRatio||1,this.settings.quality==='ultra'?2:1.5)*this.settings.resolution;const max=this.device?.limits.maxTextureDimension2D||4096;const [w,h]=targetSize(rect.width,rect.height,scale,max);if(w===this.width&&h===this.height)return;this.width=this.canvas.width=w;this.height=this.canvas.height=h;this.post.resize(w,h);if(this.device){this.colorMSAA?.destroy();this.depth?.destroy();this.colorMSAA=this.device.createTexture({size:[w,h],format:this.sceneFormat,sampleCount:this.samples,usage:GPUTextureUsage.RENDER_ATTACHMENT});this.depth=this.device.createTexture({size:[w,h],format:'depth32float',sampleCount:this.samples,usage:GPUTextureUsage.RENDER_ATTACHMENT});}}
  updateUniforms(camera,world,env,train,time){const gpu=this.kind==='WebGPU',fov=(camera.fov||56)*Math.PI/180;this.vp=mat4Mul(perspective(fov,this.width/this.height,.15,15000,gpu),lookAt(camera.position,camera.target));this.frame.set(this.vp,0);this.frustum=[];for(const [axis,sign] of [[0,1],[0,-1],[1,1],[1,-1],[2,-1]]){const plane=[this.vp[3]+sign*this.vp[axis],this.vp[7]+sign*this.vp[4+axis],this.vp[11]+sign*this.vp[8+axis],this.vp[15]+sign*this.vp[12+axis]],n=Math.hypot(plane[0],plane[1],plane[2]);this.frustum.push(plane.map(x=>x/n));}this.frame.set(mat4Inverse(this.vp),16);
-  const angle=(env.hour-6)/24*Math.PI*2;const altitude=Math.sin(angle);const day=smooth(-.13,.16,altitude);const sun=norm([Math.cos(angle)*.72,Math.max(.08,altitude),.38]);const target=train?train.cursor.pose(-train.length*.32).p:camera.target;const shadowTarget=[Math.round(target[0]),target[1],Math.round(target[2])];this.shadowCenter=shadowTarget;
+  const angle=(env.hour-6)/24*Math.PI*2;const altitude=Math.sin(angle);const day=smooth(-.13,.16,altitude);const sun=norm([Math.cos(angle)*.72,Math.max(.08,altitude),.38]);const target=train&&camera.mode!=='free'?train.cursor.pose(-train.length*.32).p:camera.target;const shadowTarget=[Math.round(target[0]),target[1],Math.round(target[2])];this.shadowCenter=shadowTarget;
   const lightVP=mat4Mul(orthographic(-230,230,-230,230,1,1700,gpu),lookAt(add(shadowTarget,mul(sun,800)),shadowTarget));this.frame.set(lightVP,32);this.frame.set([...camera.position,time],48);this.frame.set([...sun,day],52);const warm=1-smooth(.08,.65,altitude);this.frame.set([1,.98-warm*.13,.90-warm*.26,env.exposure||1],56);const w=WEATHER[env.weather]||WEATHER.clear;this.frame.set([...hex(world.sky).slice(0,3),w.fog],60);this.frame.set([w.cloud,w.wet,['alpine','coast','nordic','canyon','sakura','highland','pine','metro'].indexOf(world.theme),world.water],64);
   if(train){const head=train.cursor.pose(train.stock.locoLength*.5);this.frame.set([head.p[0],head.p[1]+2.4,head.p[2],train.controls.headlights?14:0],68);this.frame.set([...head.f,this.settings.shadows?1:0],72);}else{this.frame.set([0,0,0,0],68);this.frame.set([0,0,1,this.settings.shadows?1:0],72);}
   this.frame.set(hex(world.ground),76);this.frame.set(hex(world.rock),80);this.frame.set([this.width,this.height,env.weather==='snow'?world.railY-15:world.snowLine,w.wind],84);
@@ -366,10 +857,10 @@ class Renderer {
  ensureGPU(b){const d=this.device,geo=b.geometry;if(!geo.gpu){const vb=d.createBuffer({size:geo.vertices.byteLength,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST}),ib=d.createBuffer({size:geo.indices.byteLength,usage:GPUBufferUsage.INDEX|GPUBufferUsage.COPY_DST});d.queue.writeBuffer(vb,0,geo.vertices);d.queue.writeBuffer(ib,0,geo.indices);geo.gpu={vb,ib};this.geometries.add(geo);}const bytes=b.count*96;if(!b.gpuBuffer||b.capacity<bytes){b.gpuBuffer?.destroy();b.capacity=Math.max(96,bytes*2);b.gpuBuffer=d.createBuffer({size:b.capacity,usage:GPUBufferUsage.VERTEX|GPUBufferUsage.COPY_DST});b.dirty=true;this.batches.add(b);}if(b.dirty&&bytes){d.queue.writeBuffer(b.gpuBuffer,0,b.data.buffer,b.data.byteOffset,bytes);b.dirty=false;}}
  ensureGL(b){const g=this.gl,geo=b.geometry;if(!geo.gl){const vb=g.createBuffer(),ib=g.createBuffer();g.bindBuffer(g.ARRAY_BUFFER,vb);g.bufferData(g.ARRAY_BUFFER,geo.vertices,g.STATIC_DRAW);g.bindBuffer(g.ELEMENT_ARRAY_BUFFER,ib);g.bufferData(g.ELEMENT_ARRAY_BUFFER,geo.indices,g.STATIC_DRAW);geo.gl={vb,ib};this.geometries.add(geo);}const bytes=b.count*96;if(!b.glBuffer||b.capacity<bytes){if(b.glBuffer)g.deleteBuffer(b.glBuffer);if(b.vao)g.deleteVertexArray(b.vao);b.glBuffer=g.createBuffer();g.bindBuffer(g.ARRAY_BUFFER,b.glBuffer);b.capacity=Math.max(96,bytes*2);g.bufferData(g.ARRAY_BUFFER,b.capacity,b.dynamic?g.DYNAMIC_DRAW:g.STATIC_DRAW);b.dirty=true;b.vao=g.createVertexArray();g.bindVertexArray(b.vao);g.bindBuffer(g.ARRAY_BUFFER,geo.gl.vb);for(const [loc,size,offset] of [[0,3,0],[1,3,12],[2,2,24]]){g.enableVertexAttribArray(loc);g.vertexAttribPointer(loc,size,g.FLOAT,false,32,offset);}g.bindBuffer(g.ARRAY_BUFFER,b.glBuffer);for(let i=0;i<6;i++){g.enableVertexAttribArray(i+3);g.vertexAttribPointer(i+3,4,g.FLOAT,false,96,i*16);g.vertexAttribDivisor(i+3,1);}g.bindBuffer(g.ELEMENT_ARRAY_BUFFER,geo.gl.ib);g.bindVertexArray(null);this.batches.add(b);}if(b.dirty&&bytes){g.bindBuffer(g.ARRAY_BUFFER,b.glBuffer);g.bufferSubData(g.ARRAY_BUFFER,0,b.data.subarray(0,b.count*24));b.dirty=false;}}
  drawGPU(pass,b){pass.setVertexBuffer(0,b.geometry.gpu.vb);pass.setVertexBuffer(1,b.gpuBuffer);pass.setIndexBuffer(b.geometry.gpu.ib,'uint32');pass.drawIndexed(b.geometry.indices.length,b.count);this.drawCalls++;this.triangles+=b.geometry.indices.length/3*b.count;}
- render(batches,camera,world,env,train,time){if(this.lost)return;this.resize();this.updateUniforms(camera,world,env,train,time);this.drawCalls=0;this.triangles=0;const visible=[],shadow=[];for(const b of batches){const distance=length(sub(b.center,camera.position));const lodScale=this.settings.quality==='low'?.35:this.settings.quality==='medium'?.65:1;if((b.lodNear&&distance>b.lodNear*lodScale)||(b.lodFar&&distance<=b.lodFar*lodScale))continue;if(this.visible(b,camera))visible.push(b);if(this.settings.shadows&&this.visible(b,camera,true))shadow.push(b);}visible.sort((a,b)=>Number(!!a.transparent)-Number(!!b.transparent));const need=new Set([...visible,...shadow]);
+ render(batches,camera,world,env,train,time){if(this.lost)return;this.resize();this.updateUniforms(camera,world,env,train,time);this.drawCalls=0;this.triangles=0;const visible=[],shadow=[];for(const b of batches){const distance=length(sub(b.center,camera.position));const lodScale=this.settings.quality==='low'?.35:this.settings.quality==='medium'?.65:1;if((b.lodNear&&distance>b.lodNear*lodScale)||(b.lodFar&&distance<=b.lodFar*lodScale))continue;if(this.visible(b,camera))visible.push(b);if(this.settings.shadows&&this.visible(b,camera,true))shadow.push(b);}visible.sort((a,b)=>Number(!!a.transparent)-Number(!!b.transparent)||(a.transparent?length(sub(b.center,camera.position))-length(sub(a.center,camera.position)):0));const need=new Set([...visible,...shadow]);
   if(this.device){for(const b of need)this.ensureGPU(b);const d=this.device;d.queue.writeBuffer(this.uniform,0,this.frame);const encoder=d.createCommandEncoder();if(this.settings.shadows){const pass=encoder.beginRenderPass({colorAttachments:[],depthStencilAttachment:{view:this.shadowView,depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'store'}});pass.setPipeline(this.shadowPipeline);pass.setBindGroup(0,this.basicGroup);for(const b of shadow)this.drawGPU(pass,b);pass.end();}
-   const pass=encoder.beginRenderPass({colorAttachments:[{view:this.colorMSAA.createView(),resolveTarget:this.context.getCurrentTexture().createView(),clearValue:{r:.2,g:.3,b:.4,a:1},loadOp:'clear',storeOp:'discard'}],depthStencilAttachment:{view:this.depth.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'discard'}});pass.setPipeline(this.skyPipeline);pass.setBindGroup(0,this.basicGroup);pass.draw(3);pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.mainGroup);for(const b of visible){pass.setPipeline(b.transparent?this.particlePipeline:this.pipeline);this.drawGPU(pass,b);}pass.end();d.queue.submit([encoder.finish()]);
-  }else{const g=this.gl;for(const b of need)this.ensureGL(b);g.bindBuffer(g.UNIFORM_BUFFER,this.uniform);g.bufferSubData(g.UNIFORM_BUFFER,0,this.frame);const draw=b=>{g.bindVertexArray(b.vao);g.drawElementsInstanced(g.TRIANGLES,b.geometry.indices.length,g.UNSIGNED_INT,0,b.count);this.drawCalls++;this.triangles+=b.geometry.indices.length/3*b.count;};g.enable(g.DEPTH_TEST);g.depthMask(true);g.depthFunc(g.LESS);if(this.settings.shadows){g.bindFramebuffer(g.FRAMEBUFFER,this.shadowFB);g.viewport(0,0,this.shadowSize,this.shadowSize);g.clear(g.DEPTH_BUFFER_BIT);g.useProgram(this.glShadow);g.enable(g.POLYGON_OFFSET_FILL);g.polygonOffset(1.5,1);for(const b of shadow)draw(b);g.disable(g.POLYGON_OFFSET_FILL);}g.bindFramebuffer(g.FRAMEBUFFER,null);g.viewport(0,0,this.width,this.height);g.clearColor(.25,.4,.6,1);g.clear(g.COLOR_BUFFER_BIT|g.DEPTH_BUFFER_BIT);g.useProgram(this.glSky);g.bindVertexArray(this.emptyVAO);g.depthMask(false);g.disable(g.DEPTH_TEST);g.drawArrays(g.TRIANGLES,0,3);g.depthMask(true);g.enable(g.DEPTH_TEST);g.useProgram(this.glMain);g.activeTexture(g.TEXTURE0);g.bindTexture(g.TEXTURE_2D,this.shadowTexture);for(const b of visible){if(b.transparent){g.enable(g.BLEND);g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);g.depthMask(false);}else{g.disable(g.BLEND);g.depthMask(true);}draw(b);}g.disable(g.BLEND);g.depthMask(true);g.bindVertexArray(null);}
+   const pass=encoder.beginRenderPass({colorAttachments:[{view:this.colorMSAA.createView(),resolveTarget:this.post.scene.createView(),clearValue:{r:.2,g:.3,b:.4,a:1},loadOp:'clear',storeOp:'discard'}],depthStencilAttachment:{view:this.depth.createView(),depthClearValue:1,depthLoadOp:'clear',depthStoreOp:'discard'}});pass.setPipeline(this.skyPipeline);pass.setBindGroup(0,this.basicGroup);pass.draw(3);pass.setPipeline(this.pipeline);pass.setBindGroup(0,this.mainGroup);for(const b of visible){pass.setPipeline(b.transparent?this.particlePipeline:this.pipeline);this.drawGPU(pass,b);}pass.end();this.post.encodeGPU(encoder,this.context.getCurrentTexture().createView(),env,time,this.settings.quality);d.queue.submit([encoder.finish()]);
+  }else{const g=this.gl;for(const b of need)this.ensureGL(b);g.bindBuffer(g.UNIFORM_BUFFER,this.uniform);g.bufferSubData(g.UNIFORM_BUFFER,0,this.frame);const draw=b=>{g.bindVertexArray(b.vao);g.drawElementsInstanced(g.TRIANGLES,b.geometry.indices.length,g.UNSIGNED_INT,0,b.count);this.drawCalls++;this.triangles+=b.geometry.indices.length/3*b.count;};g.enable(g.DEPTH_TEST);g.depthMask(true);g.depthFunc(g.LESS);if(this.settings.shadows){g.bindFramebuffer(g.FRAMEBUFFER,this.shadowFB);g.viewport(0,0,this.shadowSize,this.shadowSize);g.clear(g.DEPTH_BUFFER_BIT);g.useProgram(this.glShadow);g.enable(g.POLYGON_OFFSET_FILL);g.polygonOffset(1.5,1);for(const b of shadow)draw(b);g.disable(g.POLYGON_OFFSET_FILL);}g.bindFramebuffer(g.FRAMEBUFFER,this.post.sceneFB);g.viewport(0,0,this.width,this.height);g.clearColor(.25,.4,.6,1);g.clear(g.COLOR_BUFFER_BIT|g.DEPTH_BUFFER_BIT);g.useProgram(this.glSky);g.bindVertexArray(this.emptyVAO);g.depthMask(false);g.disable(g.DEPTH_TEST);g.drawArrays(g.TRIANGLES,0,3);g.depthMask(true);g.enable(g.DEPTH_TEST);g.useProgram(this.glMain);g.activeTexture(g.TEXTURE0);g.bindTexture(g.TEXTURE_2D,this.shadowTexture);for(const b of visible){if(b.transparent){g.enable(g.BLEND);g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);g.depthMask(false);}else{g.disable(g.BLEND);g.depthMask(true);}draw(b);}g.disable(g.BLEND);g.depthMask(true);g.bindVertexArray(null);this.post.drawGL(env,time,this.settings.quality);}this.drawCalls+=this.post.passCount;
  }
  disposeBatch(b){if(b.gpuBuffer)b.gpuBuffer.destroy();if(b.glBuffer)this.gl?.deleteBuffer(b.glBuffer);if(b.vao)this.gl?.deleteVertexArray(b.vao);b.gpuBuffer=b.glBuffer=b.vao=null;b.capacity=0;b.dirty=true;this.batches.delete(b);}
  disposeGeometry(geo){if(geo.gpu){geo.gpu.vb.destroy();geo.gpu.ib.destroy();geo.gpu=null;}if(geo.gl){this.gl.deleteBuffer(geo.gl.vb);this.gl.deleteBuffer(geo.gl.ib);geo.gl=null;}this.geometries.delete(geo);}
@@ -377,6 +868,126 @@ class Renderer {
 }
 
 return {Renderer};
+})();
+// ---- src/cinematic-models.js ----
+const __m_src_cinematic_models_js = (() => {
+const {Geometry,MeshBuilder,PRIMITIVES} = __m_src_geometry_js;
+const {add,sub,mul,norm,cross,hex,transform,frameMatrix,mat4Mul,pointTransform,clamp,TAU} = __m_src_math_js;
+/** Geometric corrections: continuous train noses and terrain-grounded construction. */
+
+
+
+// The high-speed shell uses the same octagonal cross-section as the coach body.
+// All dimensions are in metres. Windscreens sit on the actual loft, not in front of it.
+function noseSurface(length,t,angle){
+ const width=1.585*(1-.89*t*t),roof=4.81-2.72*Math.pow(t,1.18),floor=1.46+.10*t;
+ const c=Math.cos(angle),s=Math.sin(angle),superellipse=v=>Math.sign(v)*Math.pow(Math.abs(v),.55);
+ return [superellipse(c)*width,(roof+floor)/2+superellipse(s)*(roof-floor)/2,length*.5-7+7*t];
+}
+function loft(length,t0,t1,a0,a1,rows,columns,offset=0){
+ const vertices=[],indices=[];
+ for(let j=0;j<=rows;j++)for(let i=0;i<=columns;i++){
+  const t=t0+(t1-t0)*j/rows,a=a0+(a1-a0)*i/columns,p=noseSurface(length,t,a);
+  const along=sub(noseSurface(length,clamp(t+.002,0,1),a),noseSurface(length,clamp(t-.002,0,1),a));
+  const around=sub(noseSurface(length,t,a+.002),noseSurface(length,t,a-.002));
+  const n=norm(cross(around,along));vertices.push(...add(p,mul(n,offset)),...n,t,i/columns);
+ }
+ for(let j=0;j<rows;j++)for(let i=0;i<columns;i++){const a=j*(columns+1)+i,b=a+columns+1;indices.push(a,a+1,b,a+1,b+1,b);}
+ return new Geometry(vertices,indices);
+}
+function highSpeedNose(stock){
+ const L=stock.locoLength,key='velocity-loft-'+L,glass=key+'-glazing';
+ if(!PRIMITIVES[key]){
+  PRIMITIVES[key]=loft(L,0,1,0,TAU,28,40);
+  PRIMITIVES[glass]=loft(L,.19,.54,Math.PI*.18,Math.PI*.82,12,20,.035);
+  const cap=new MeshBuilder(),center=[0,1.825,L*.5];
+  for(let i=0;i<40;i++)cap.tri(center,noseSurface(L,1,i*TAU/40),noseSurface(L,1,(i+1)*TAU/40),[0,0,1]);
+  PRIMITIVES[key+'-cap']=cap.geometry();
+  const rim=[[.19,.205,Math.PI*.18,Math.PI*.82],[.525,.54,Math.PI*.18,Math.PI*.82],[.19,.54,Math.PI*.18,Math.PI*.192],[.19,.54,Math.PI*.808,Math.PI*.82]];
+  rim.forEach((p,i)=>PRIMITIVES[key+'-rim-'+i]=loft(L,...p,12,20,.045));
+ }
+ const parts=[{g:key,m:transform([0,0,0]),c:hex(stock.color),pr:[0,.27,.40,0],role:'shell',tier:0},
+  {g:glass,m:transform([0,0,0]),c:hex('#1d3944'),pr:[3,.11,.35,0],role:'glass',tier:0}];
+ parts.push({g:key+'-cap',m:transform([0,0,0]),c:hex(stock.color),pr:[0,.3,.4,0],role:'shell',tier:0});
+ for(let i=0;i<4;i++)parts.push({g:key+'-rim-'+i,m:transform([0,0,0]),c:hex('#263330'),pr:[0,.8,0,0],role:'cab',tier:0});
+ const strip=new MeshBuilder();
+ for(const side of [-1,1])for(let j=0;j<26;j++){
+  const t=j/28,u=(j+1)/28,angle=side===1?-.05:Math.PI+.05;
+  const p=noseSurface(L,t,angle),q=noseSurface(L,u,angle);p[0]+=side*.018;q[0]+=side*.018;
+  strip.quad(p,q,add(q,[0,-.12,0]),add(p,[0,-.12,0]));
+ }
+ const stripe=key+'-stripe';if(!PRIMITIVES[stripe])PRIMITIVES[stripe]=strip.geometry();
+ parts.push({g:stripe,m:transform([0,0,0]),c:hex(stock.stripe),pr:[0,.33,.35,0],role:'shell',tier:0});
+ return parts;
+}
+
+/** Footprint samples: a pad closes visual terrain/mesh gaps without floating corners.
+ * New towns reject extreme slopes instead of growing implausibly tall foundations.
+ */
+function foundation(world,p,size,yaw=0){
+ const [sx,,sz]=size,c=Math.cos(yaw),s=Math.sin(yaw),heights=[];
+ for(const x of [-sx*.52,0,sx*.52])for(const z of [-sz*.52,0,sz*.52])
+  heights.push(world.height(p[0]+x*c+z*s,p[2]-x*s+z*c));
+ return {low:Math.min(...heights)-1.1,high:Math.max(...heights),spread:Math.max(...heights)-Math.min(...heights)};
+}
+function buildingFoundation(world,p,size,yaw,station=false){
+ const f=foundation(world,p,size,yaw),top=Math.max(p[1],f.high)+.08;
+ // A short stepped podium hides sub-tile interpolation differences at close range.
+ world.builder.oriented('box',transform([p[0],(top+f.low)*.5,p[2]],[size[0]+.35,Math.max(.4,top-f.low),size[2]+.35],yaw),hex('#8c8b7c'),[6,.97,0,0]);
+ world.features.foundations=(world.features.foundations||0)+1;
+ return [p[0],top,p[2]];
+}
+
+/** A viaduct span owns its deck, two bearings and exactly one boundary pier.
+ * Pier axes are vertical even on a graded route; no leaning 100 m pillars.
+ * Arch springings meet those piers, avoiding the former independent 24/27 m grids.
+ */
+function buildViaducts(world){
+ const b=world.builder,stone=hex('#a6a493'),metal=hex('#596c6c'),water=world.def.water;
+ const spans=[];
+ for(const edge of world.network.edges.values()){
+  const n=Math.ceil(edge.length/27),step=edge.length/n;let wasBridge=false;
+  for(let i=0;i<n;i++){
+   const s0=i*step,s1=(i+1)*step,mid=edge.at((s0+s1)*.5),h=world.baseHeight(mid.p[0],mid.p[2]);
+   if(mid.p[1]-h<=13){wasBridge=false;continue;}
+   const a=edge.at(s0),c=edge.at(s1),ground=p=>Math.max(water-4,world.baseHeight(p[0],p[2])-1.5);
+   const pier=p=>{const bottom=ground(p.p),top=p.p[1]-2.8,height=top-bottom;
+    if(height<.3)return;
+    const yaw=Math.atan2(p.f[0],p.f[2]);
+    b.oriented('box',transform([p.p[0],bottom+height*.5,p.p[2]],[2.8,height,2.25],yaw),stone,[6,.94,0,0]);
+    b.oriented('box',transform([p.p[0],top+.3,p.p[2]],[5.1,.65,2.8],yaw),stone,[6,.94,0,0]);
+    b.oriented('box',transform([p.p[0],bottom+.55,p.p[2]],[4.4,1.1,3.8],yaw),stone,[6,.94,0,0]);
+   };
+   if(!wasBridge)pier(a);pier(c);wasBridge=true;
+   const chord=sub(c.p,a.p),length=Math.hypot(...chord),matrix=frameMatrix(add(mul(add(a.p,c.p),.5),[0,-1.06,0]),chord,[5.1,1.35,length+.12]);
+   b.oriented('box',matrix,stone,[6,.94,0,0]);
+   for(const side of [-1,1]){
+    const rail=(p,y)=>world.railCross(p,side*2.42,y);
+    b.segment(rail(a,.82),rail(c,.82),.075,metal,[0,.48,.6,0]);
+    b.segment(rail(a,.34),rail(c,.34),.05,metal);
+    for(let j=0;j<6;j++){const p=edge.at(s0+j*step/6);b.segment(rail(p,-.25),rail(p,.88),.065,metal);}
+    const gap=Math.min(a.p[1]-ground(a.p),c.p[1]-ground(c.p));
+    if(gap>15&&['alpine','highland','nordic','pine'].includes(world.def.theme)){
+     const rise=Math.min(step*.37,gap*.55);
+     for(let j=0;j<16;j++){
+      const t=j/16,u=(j+1)/16,p=edge.at(s0+step*t),q=edge.at(s0+step*u);
+      b.segment(rail(p,-2.4-rise*(1-Math.sin(Math.PI*t))),rail(q,-2.4-rise*(1-Math.sin(Math.PI*u))),.8,stone,[6,.96,0,0],1.05);
+     }
+    }else{
+     for(let j=0;j<4;j++){
+      const p=edge.at(s0+j*step/4),q=edge.at(s0+(j+1)*step/4);
+      b.segment(rail(p,-3.9),rail(q,-3.9),.18,metal,[0,.5,.6,0]);
+      b.segment(rail(p,j%2?-3.9:-1.5),rail(q,j%2?-1.5:-3.9),.15,metal,[0,.5,.6,0]);
+     }
+    }
+   }
+   spans.push({edge:edge.id,s0,s1,length,pierTop:c.p[1]-2.8,pierBottom:ground(c.p)});world.features.bridges++;
+  }
+ }
+ world.viaductSpans=spans;return spans;
+}
+
+return {noseSurface,highSpeedNose,foundation,buildingFoundation,buildViaducts};
 })();
 // ---- src/generation.js ----
 const __m_src_generation_js = (() => {
@@ -591,70 +1202,91 @@ function surveyRoute(def, terrain) {
 
 return {GENERATOR_VERSION,REGION_PROFILES,generationOptions,TerrainField,surveyRoute};
 })();
-// ---- src/geometry.js ----
-const __m_src_geometry_js = (() => {
-const {norm,sub,cross,TAU,transform,frameMatrix,add,mul,length} = __m_src_math_js;
+// ---- src/terrain-mesh.js ----
+const __m_src_terrain_mesh_js = (() => {
+const {Geometry} = __m_src_geometry_js;
+const {norm,clamp} = __m_src_math_js;
+/** Track-aware terrain tessellation with conforming transition edges.
+ * Numerical cuttings can be much narrower than a regular terrain tile. Only
+ * cells near the railway subdivide; adjacent coarse cells share their edge
+ * vertices. Camera queries use the SAME triangles that the near mesh renders.
+ */
 
-class Geometry {
- constructor(vertices,indices){this.vertices=new Float32Array(vertices);this.indices=new Uint32Array(indices);this.gpu=null;this.gl=null;}
-}
-class MeshBuilder {
- constructor(){this.v=[];this.i=[];}
- vertex(p,n=[0,1,0],uv=[0,0]){const i=this.v.length/8;this.v.push(...p,...n,...uv);return i;}
- tri(a,b,c,normal=null){const n=normal||norm(cross(sub(b,a),sub(c,a))),i=this.v.length/8;this.vertex(a,n,[0,0]);this.vertex(b,n,[1,0]);this.vertex(c,n,[1,1]);this.i.push(i,i+1,i+2);}
- quad(a,b,c,d,normal=null){const n=normal||norm(cross(sub(b,a),sub(c,a))),i=this.v.length/8;this.vertex(a,n,[0,0]);this.vertex(b,n,[1,0]);this.vertex(c,n,[1,1]);this.vertex(d,n,[0,1]);this.i.push(i,i+1,i+2,i,i+2,i+3);}
- geometry(){return new Geometry(this.v,this.i);}
-}
-function boxGeometry(){const b=new MeshBuilder();b.quad([-.5,-.5,.5],[.5,-.5,.5],[.5,.5,.5],[-.5,.5,.5]);b.quad([.5,-.5,-.5],[-.5,-.5,-.5],[-.5,.5,-.5],[.5,.5,-.5]);b.quad([.5,-.5,.5],[.5,-.5,-.5],[.5,.5,-.5],[.5,.5,.5]);b.quad([-.5,-.5,-.5],[-.5,-.5,.5],[-.5,.5,.5],[-.5,.5,-.5]);b.quad([-.5,.5,.5],[.5,.5,.5],[.5,.5,-.5],[-.5,.5,-.5]);b.quad([-.5,-.5,-.5],[.5,-.5,-.5],[.5,-.5,.5],[-.5,-.5,.5]);return b.geometry();}
-function cylinderGeometry(segments=16,topRadius=1){const b=new MeshBuilder();for(let i=0;i<segments;i++){const a=i/segments*TAU,c=(i+1)/segments*TAU,p=[Math.cos(a)*.5,-.5,Math.sin(a)*.5],q=[Math.cos(c)*.5,-.5,Math.sin(c)*.5],r=[Math.cos(c)*.5*topRadius,.5,Math.sin(c)*.5*topRadius],s=[Math.cos(a)*.5*topRadius,.5,Math.sin(a)*.5*topRadius];b.quad(q,p,s,r);b.tri([0,-.5,0],p,q,[0,-1,0]);if(topRadius>0)b.tri([0,.5,0],r,s,[0,1,0]);}return b.geometry();}
-function sphereGeometry(segments=16,rings=10){const b=new MeshBuilder();for(let j=0;j<=rings;j++){const p=j/rings*Math.PI;for(let i=0;i<=segments;i++){const t=i/segments*TAU,n=[Math.sin(p)*Math.cos(t),Math.cos(p),Math.sin(p)*Math.sin(t)];b.vertex(mul(n,.5),n,[i/segments,j/rings]);}}for(let j=0;j<rings;j++)for(let i=0;i<segments;i++){const a=j*(segments+1)+i,c=a+segments+1;b.i.push(a,a+1,c,c,a+1,c+1);}return b.geometry();}
-function pineFarGeometry(){const b=new MeshBuilder();for(let layer=0;layer<5;layer++){const y=layer*.17,r=.48*(1-layer*.16);const seg=11;for(let i=0;i<seg;i++){const a=i/seg*TAU,c=(i+1)/seg*TAU;const p=[Math.cos(a)*r,y+Math.sin(i*7)*.025,Math.sin(a)*r],q=[Math.cos(c)*r,y+Math.sin((i+1)*7)*.025,Math.sin(c)*r],top=[Math.cos(a+c)*.018,y+.35,Math.sin(a+c)*.018];b.tri(q,p,top);b.tri([0,y+.015,0],p,q,[0,-1,0]);}}return b.geometry();}
-/** Irregular branch whorls form real 3D silhouettes, rather than stacked cones. */
-function pineGeometry(){
- const b=new MeshBuilder();
- for(let layer=0;layer<14;layer++){
-  const y=layer/14,rad=.46*Math.pow(1-y,.83),count=layer>10?5:8;
-  for(let j=0;j<count;j++){
-   const a=j/count*TAU+layer*2.399,random=.74+.28*Math.sin(j*23.1+layer*37.7),r=rad*random;
-   const f=[Math.cos(a),0,Math.sin(a)],side=[-f[2],0,f[0]],root=[f[0]*r*.13,y+.026,f[2]*r*.13],tip=[f[0]*r,y-.034,f[2]*r];
-   for(let k=0;k<3;k++){
-    const t=.27+k*.24,width=rad*(.24-k*.047),p=[f[0]*r*t,y+.03-t*.07,f[2]*r*t];
-    const l=add(p,mul(side,width)),rr=add(p,mul(side,-width)),up=[p[0],p[1]+rad*.075,p[2]];
-    const end=[f[0]*r*Math.min(1,t+.35),tip[1]-.025*Math.sin(k*19+j),f[2]*r*Math.min(1,t+.35)];
-    b.tri(l,up,end);b.tri(up,rr,end);
+
+function terrainPatch(world,x0,z0,span,n,refine=false){
+ const vertices=[],indices=[],step=span/n,cache=new Map(),levels=new Map();
+ const cells=new Uint32Array(n*n*2),division=new Uint8Array(n*n);
+ let low=Infinity,high=-Infinity;
+ const level=(x,z)=>{
+  if(!refine)return 1;const key=x+','+z;if(levels.has(key))return levels.get(key);
+  const near=world.network.nearest(x0+(x+.5)*step,z0+(z+.5)*step,85+step);
+  const value=near?4:1;levels.set(key,value);return value;
+ };
+ const vertex=(x,z)=>{
+  const key=x+','+z;if(cache.has(key))return cache.get(key);
+  const wx=x0+x*step/4,wz=z0+z*step/4,y=world.height(wx,wz),e=refine?2.5:Math.max(4,step*.22);
+  const normal=norm([world.height(wx-e,wz)-world.height(wx+e,wz),2*e,world.height(wx,wz-e)-world.height(wx,wz+e)]);
+  const climate=world.terrain.climate(wx,wz,y),index=vertices.length/8;
+  vertices.push(wx,y,wz,...normal,climate.moisture,climate.drainage);
+  low=Math.min(low,y);high=Math.max(high,y);cache.set(key,index);return index;
+ };
+ for(let z=0;z<n;z++)for(let x=0;x<n;x++){
+  const cell=z*n+x,start=indices.length,m=level(x,z),gx=x*4,gz=z*4;
+  division[cell]=m;cells[cell*2]=start;
+  if(m===4){
+   for(let j=0;j<4;j++)for(let i=0;i<4;i++){
+    const a=vertex(gx+i,gz+j),b=vertex(gx+i,gz+j+1),c=vertex(gx+i+1,gz+j),d=vertex(gx+i+1,gz+j+1);
+    indices.push(a,b,c,c,b,d);
+   }
+  }else{
+   const edge=[level(x-1,z),level(x,z+1),level(x+1,z),level(x,z-1)];
+   if(edge.every(v=>v===1)){
+    const a=vertex(gx,gz),b=vertex(gx,gz+4),c=vertex(gx+4,gz),d=vertex(gx+4,gz+4);indices.push(a,b,c,c,b,d);
+   }else{
+    const border=[],corners=[[gx,gz],[gx,gz+4],[gx+4,gz+4],[gx+4,gz]],center=vertex(gx+2,gz+2);
+    for(let e=0;e<4;e++){const a=corners[e],b=corners[(e+1)%4];for(let k=0;k<edge[e];k++)border.push(vertex(a[0]+(b[0]-a[0])*k/edge[e],a[1]+(b[1]-a[1])*k/edge[e]));}
+    for(let i=0;i<border.length;i++)indices.push(center,border[i],border[(i+1)%border.length]);
    }
   }
+  cells[cell*2+1]=indices.length-start;
  }
- return b.geometry();
-}
-function foliageGeometry(){const base=sphereGeometry(14,9),v=base.vertices;for(let i=0;i<v.length;i+=8){const n=[v[i],v[i+1],v[i+2]],r=.83+.11*Math.sin(n[0]*34+n[1]*21)+.12*Math.sin(n[2]*27+n[1]*35);v[i]*=r;v[i+1]*=r;v[i+2]*=r;}return base;}
-function bodyGeometry(){const b=new MeshBuilder(),ring=[[-.42,-.5],[.42,-.5],[.5,-.36],[.5,.31],[.4,.5],[-.4,.5],[-.5,.31],[-.5,-.36]];for(let i=0;i<ring.length;i++){const a=ring[i],c=ring[(i+1)%ring.length];b.quad([a[0],a[1],-.5],[c[0],c[1],-.5],[c[0],c[1],.5],[a[0],a[1],.5]);b.tri([0,0,.5],[a[0],a[1],.5],[c[0],c[1],.5],[0,0,1]);b.tri([0,0,-.5],[c[0],c[1],-.5],[a[0],a[1],-.5],[0,0,-1]);}return b.geometry();}
-function noseGeometry(){const b=new MeshBuilder();const rings=[[-.5,.48,.5,0],[.05,.45,.43,-.04],[.5,.24,.15,-.23],[.62,.09,.09,-.24]];const sides=12;for(let j=0;j<rings.length-1;j++){const [z,r,h,y]=rings[j],[z1,r1,h1,y1]=rings[j+1];for(let i=0;i<sides;i++){const t=i/sides*TAU,u=(i+1)/sides*TAU;b.quad([Math.cos(t)*r,Math.sin(t)*h+y,z],[Math.cos(u)*r,Math.sin(u)*h+y,z],[Math.cos(u)*r1,Math.sin(u)*h1+y1,z1],[Math.cos(t)*r1,Math.sin(t)*h1+y1,z1]);}}return b.geometry();}
-const PRIMITIVES={box:boxGeometry(),cylinder:cylinderGeometry(18),cone:cylinderGeometry(12,0),sphere:sphereGeometry(),pine:pineGeometry(),pineFar:pineFarGeometry(),foliage:foliageGeometry(),foliageFar:sphereGeometry(7,5),body:bodyGeometry(),nose:noseGeometry()};
-/** One instance = model matrix (64 B), linear material tint (16 B), material parameters (16 B). */
-class Batch {
- constructor(geometry,{center=[0,0,0],radius=1e6,maxDistance=12000,castShadow=true,dynamic=false}={}){this.geometry=geometry;this.center=center;this.radius=radius;this.maxDistance=maxDistance;this.castShadow=castShadow;this.dynamic=dynamic;this.items=[];this.data=null;this.count=0;this.dirty=true;this.gpuBuffer=null;this.glBuffer=null;this.capacity=0;}
- add(matrix,color=[1,1,1,1],props=[0,.65,0,0]){this.items.push(...matrix,...color,...props);this.count++;return this;}
- finish(){this.data=new Float32Array(this.items);this.items=[];this.dirty=true;return this;}
- reset(){this.items.length=0;this.count=0;}
- flush(){const n=this.items.length;if(!this.data||this.data.length<n)this.data=new Float32Array(Math.max(n,(this.data?.length||256)*2));this.data.set(this.items);this.dirty=true;}
- dispose(renderer){renderer?.disposeBatch(this);}
-}
-class SceneBuilder {
- constructor(){this.batches=[];this.cells=new Map();this.geometry=PRIMITIVES;}
- instance(name,p,scale,color,props=[0,.7,0,0],yaw=0,pitch=0,roll=0){const cx=Math.floor(p[0]/480),cz=Math.floor(p[2]/480),key=`${name}:${cx}:${cz}`;let batch=this.cells.get(key);if(!batch){batch=new Batch(this.geometry[name],{center:[cx*480+240,p[1],cz*480+240],radius:520,maxDistance:name==='pine'||name==='foliage'?3400:4200});this.cells.set(key,batch);this.batches.push(batch);}batch.radius=Math.max(batch.radius,Math.hypot(p[0]-batch.center[0],p[1]-batch.center[1],p[2]-batch.center[2])+Math.hypot(...scale)*.6);batch.add(transform(p,scale,yaw,pitch,roll),color,props);return batch;}
- oriented(name,matrix,color,props=[0,.7,0,0]){const p=[matrix[12],matrix[13],matrix[14]],cx=Math.floor(p[0]/480),cz=Math.floor(p[2]/480),key=`${name}:${cx}:${cz}`;let batch=this.cells.get(key);if(!batch){batch=new Batch(this.geometry[name],{center:[cx*480+240,p[1],cz*480+240],radius:520,maxDistance:3600});this.cells.set(key,batch);this.batches.push(batch);}batch.radius=Math.max(batch.radius,Math.hypot(p[0]-batch.center[0],p[1]-batch.center[1],p[2]-batch.center[2])+Math.hypot(matrix[0],matrix[1],matrix[2],matrix[4],matrix[5],matrix[6],matrix[8],matrix[9],matrix[10])*.6);batch.add(matrix,color,props);return batch;}
- segment(a,b,width,color,props=[0,.65,0,0],depth=width){const mid=mul(add(a,b),.5),m=frameMatrix(mid,sub(b,a),[width,depth,length(sub(b,a))]);return this.oriented('box',m,color,props);}
- mesh(geometry,center=[0,0,0],radius=1000,props=[0,.8,0,0],color=[1,1,1,1]){const batch=new Batch(geometry,{center,radius});batch.add(transform([0,0,0]),color,props).finish();this.batches.push(batch);return batch;}
- finish(){const lod=[];for(const b of this.cells.values()){b.finish();if(b.geometry===this.geometry.pine||b.geometry===this.geometry.foliage){const isPine=b.geometry===this.geometry.pine;b.lodNear=isPine?600:700;const far=new Batch(isPine?this.geometry.pineFar:this.geometry.foliageFar,{center:b.center,radius:b.radius,maxDistance:b.maxDistance});far.data=b.data;far.count=b.count;far.lodFar=b.lodNear;lod.push(far);}}this.batches.push(...lod);this.cells.clear();return this.batches;}
+ // Boundary skirts have the same subdivisions as the patch edge they seal.
+ const perimeter=[];
+ for(let x=0;x<n;x++)for(let i=0,m=Math.max(level(x,0),level(x,-1));i<m;i++)perimeter.push(vertex(x*4+i*4/m,0));
+ for(let z=0;z<n;z++)for(let i=0,m=Math.max(level(n-1,z),level(n,z));i<m;i++)perimeter.push(vertex(n*4,z*4+i*4/m));
+ for(let x=n-1;x>=0;x--)for(let i=0,m=Math.max(level(x,n-1),level(x,n));i<m;i++)perimeter.push(vertex((x+1)*4-i*4/m,n*4));
+ for(let z=n-1;z>=0;z--)for(let i=0,m=Math.max(level(0,z),level(-1,z));i<m;i++)perimeter.push(vertex(0,(z+1)*4-i*4/m));
+ for(let j=0;j<perimeter.length;j++){
+  const a=perimeter[j],b=perimeter[(j+1)%perimeter.length],i=vertices.length/8,av=vertices.slice(a*8,a*8+8),bv=vertices.slice(b*8,b*8+8);
+  av[1]-=32;bv[1]-=32;vertices.push(...av,...bv);indices.push(a,b,i,i,b,i+1);
+ }
+ const geometry=new Geometry(vertices,indices),v=geometry.vertices,ii=geometry.indices;
+ const triangleHeight=(offset,x,z)=>{
+  const a=ii[offset]*8,b=ii[offset+1]*8,c=ii[offset+2]*8;
+  const ax=v[a],az=v[a+2],bx=v[b],bz=v[b+2],cx=v[c],cz=v[c+2];
+  const den=(bz-cz)*(ax-cx)+(cx-bx)*(az-cz);if(Math.abs(den)<1e-8)return null;
+  const u=((bz-cz)*(x-cx)+(cx-bx)*(z-cz))/den,w=((cz-az)*(x-cx)+(ax-cx)*(z-cz))/den,t=1-u-w;
+  return u>=-1e-5&&w>=-1e-5&&t>=-1e-5?u*v[a+1]+w*v[b+1]+t*v[c+1]:null;
+ };
+ return {geometry,center:[x0+span/2,(low+high)/2,z0+span/2],radius:Math.hypot(span*.71,(high-low)*.5)+40,
+  cells,division,step,x0,z0,span,
+  heightAt(x,z){
+   const tx=clamp((x-x0)/step,0,n-1e-8),tz=clamp((z-z0)/step,0,n-1e-8),ix=Math.floor(tx),iz=Math.floor(tz),cell=iz*n+ix,start=cells[cell*2];
+   if(division[cell]===4){const u=(tx-ix)*4,w=(tz-iz)*4,sx=Math.floor(u),sz=Math.floor(w),offset=start+(sz*4+sx)*6+((u-sx)+(w-sz)>1?3:0);return triangleHeight(offset,x,z)??world.height(x,z);}
+   for(let i=start;i<start+cells[cell*2+1];i+=3){const h=triangleHeight(i,x,z);if(h!==null)return h;}
+   return world.height(x,z);
+  }
+ };
 }
 
-return {Geometry,MeshBuilder,boxGeometry,cylinderGeometry,sphereGeometry,pineFarGeometry,pineGeometry,foliageGeometry,bodyGeometry,noseGeometry,PRIMITIVES,Batch,SceneBuilder};
+return {terrainPatch};
 })();
 // ---- src/world-detail.js ----
 const __m_src_world_detail_js = (() => {
+const {terrainPatch} = __m_src_terrain_mesh_js;
 const {Geometry, MeshBuilder, PRIMITIVES, Batch, sphereGeometry} = __m_src_geometry_js;
 const {rng, hash2, noise2, fbm, hex, clamp, smooth, lerp, norm, add, sub, mul, transform, frameMatrix, mat4Mul, TAU} = __m_src_math_js;
+
 /** Expedition scene construction. All placement consumes named, deterministic streams. */
 
 
@@ -699,34 +1331,23 @@ function flowerGeometry() {
 }
 PRIMITIVES.boulder=rockGeometry();PRIMITIVES.grass=grassGeometry();PRIMITIVES.fern=grassGeometry(true);PRIMITIVES.flower=flowerGeometry();
 
-function terrainTile(world,x0,z0,span,n) {
- const vertices=[],indices=[],field=world.terrain,step=span/n;
- let lo=Infinity,hi=-Infinity;
- for(let z=0;z<=n;z++) for(let x=0;x<=n;x++) {
-  const wx=x0+x*step,wz=z0+z*step,y=world.height(wx,wz),e=Math.max(4,step*.22);
-  const normal=norm([world.height(wx-e,wz)-world.height(wx+e,wz),2*e,world.height(wx,wz-e)-world.height(wx,wz+e)]);
-  const climate=field.climate(wx,wz,y);vertices.push(wx,y,wz,...normal,climate.moisture,climate.drainage);lo=Math.min(lo,y);hi=Math.max(hi,y);
- }
- for(let z=0;z<n;z++) for(let x=0;x<n;x++) {const i=z*(n+1)+x;indices.push(i,i+n+1,i+1,i+1,i+n+1,i+n+2);}
- // Skirts conceal T-junction cracks where coarse and fine tiles meet.
- const perimeter=[];for(let x=0;x<=n;x++)perimeter.push(x);for(let z=1;z<=n;z++)perimeter.push(z*(n+1)+n);
- for(let x=n-1;x>=0;x--)perimeter.push(n*(n+1)+x);for(let z=n-1;z>0;z--)perimeter.push(z*(n+1));
- for(let j=0;j<perimeter.length;j++) {
-  const a=perimeter[j],b=perimeter[(j+1)%perimeter.length],i=vertices.length/8;
-  const av=vertices.slice(a*8,a*8+8),bv=vertices.slice(b*8,b*8+8);av[1]-=32;bv[1]-=32;
-  vertices.push(...av,...bv);indices.push(a,b,i,i,b,i+1);
- }
- const batch=world.builder.mesh(new Geometry(vertices,indices),[x0+span/2,(lo+hi)/2,z0+span/2],Math.hypot(span*.71,(hi-lo)*.5)+40,[1,.95,0,0]);
- batch.maxDistance=15000;return batch;
+function terrainTile(world,x0,z0,span,n,refine=false) {
+ const patch=terrainPatch(world,x0,z0,span,n,refine);
+ const batch=world.builder.mesh(patch.geometry,patch.center,patch.radius,[1,.95,0,0]);
+ batch.maxDistance=15000;
+ if(n!==8)world.terrainPatches.set(`${Math.floor(x0/span)},${Math.floor(z0/span)}`,patch);
+ return batch;
 }
 
 async function buildExpeditionTerrain(world,onProgress=()=>{}) {
  const f=world.terrain,tile=640,count=f.half/tile;let done=0;
+ world.terrainPatches=new Map();
+ world.surfaceHeight=(x,z)=>world.terrainPatches.get(`${Math.floor(x/tile)},${Math.floor(z/tile)}`)?.heightAt(x,z)??world.height(x,z);
  for(let z=-count;z<count;z++) {
   for(let x=-count;x<count;x++) {
    const cx=x*tile+tile*.5,cz=z*tile+tile*.5;
    const near=world.network.nearest(cx,cz,850),fine=!!near;
-   const batch=terrainTile(world,x*tile,z*tile,tile,fine?32:12);
+   const batch=terrainTile(world,x*tile,z*tile,tile,fine?32:12,fine);
    if(fine) {batch.lodNear=3000;const far=terrainTile(world,x*tile,z*tile,tile,8);far.lodFar=3000;far.castShadow=false;}
    done++;
   }
@@ -823,13 +1444,14 @@ async function buildEcosystem(world,onProgress=()=>{}) {
 }
 
 /** Long engineering structures respond to actual route-to-terrain clearances. */
-function buildCivilEngineering(world) {
+function buildCivilEngineering(world,includeBridges=true) {
  const b=world.builder,theme=world.def.theme;
  for(const edge of world.network.edges.values()) {
   let inBridge=false;
   for(let s=18;s<edge.length-30;s+=24) {
    const p=edge.at(s),height=world.baseHeight(p.p[0],p.p[2]),gap=p.p[1]-height;
    if(gap>14) {
+    if(!includeBridges)continue; // New viaduct builder owns bridge geometry.
     if(!inBridge)world.features.landmarks++;inBridge=true;
     // Trussed deck and diagonals follow the railway, including the alternative.
     if(['canyon','coast','metro'].includes(theme)) for(const side of [-1,1]) {
@@ -1099,12 +1721,16 @@ return {Train,Traffic,makeStations,Mission};
 })();
 // ---- src/world.js ----
 const __m_src_world_js = (() => {
+const {foundation,buildingFoundation,buildViaducts} = __m_src_cinematic_models_js;
+const {buildShoreline} = __m_src_world_life_js;
 const {TerrainField, GENERATOR_VERSION} = __m_src_generation_js;
 const {buildExpeditionTerrain, buildEcosystem, buildLandmarks, buildCivilEngineering} = __m_src_world_detail_js;
 const {clamp,lerp,smooth,fbm,noise2,rng,hex,add,sub,mul,norm,cross,frameMatrix,transform,mat4Mul,pointTransform,TAU} = __m_src_math_js;
 const {Geometry,MeshBuilder,SceneBuilder,PRIMITIVES} = __m_src_geometry_js;
 const {RailNetwork} = __m_src_tracks_js;
 const {makeStations} = __m_src_physics_js;
+
+
 
 
 
@@ -1141,7 +1767,7 @@ class RailwayWorld {
   for(const st of this.stations){const p=this.network.edges.get(st.edge).at(st.s-60),dx=x-p.p[0],dz=z-p.p[2];const along=dx*p.f[0]+dz*p.f[2],across=dx*p.right[0]+dz*p.right[2];if(across>1&&across<100&&Math.abs(along)<150){const t=smooth(100,150,Math.abs(along))*1+smooth(55,100,across);h=lerp(p.p[1]-.4,h,clamp(t,0,1));}}
   return h;
  }
- async build(onProgress=()=>{}){onProgress('Shaping terrain',.12);await new Promise(r=>setTimeout(r,0));if(this.terrain)await buildExpeditionTerrain(this,onProgress);else this.buildTerrain();onProgress('Laying rail and bridges',.36);await new Promise(r=>setTimeout(r,0));this.buildTracks();if(this.terrain)buildCivilEngineering(this);onProgress('Building stations and villages',.56);await new Promise(r=>setTimeout(r,0));this.buildStations();this.buildTownscapes();onProgress('Planting forests',.73);await new Promise(r=>setTimeout(r,0));if(this.terrain){await buildEcosystem(this,onProgress);buildLandmarks(this);}else this.buildVegetation();this.buildDecorations();this.buildWater();this.batches=this.builder.finish();onProgress('Preparing the railway',.92);return this;}
+ async build(onProgress=()=>{}){onProgress('Shaping terrain',.12);await new Promise(r=>setTimeout(r,0));if(this.terrain)await buildExpeditionTerrain(this,onProgress);else this.buildTerrain();onProgress('Laying rail and bridges',.36);await new Promise(r=>setTimeout(r,0));this.buildTracks();if(this.terrain)buildCivilEngineering(this,false);onProgress('Building stations and villages',.56);await new Promise(r=>setTimeout(r,0));this.buildStations();this.buildTownscapes();onProgress('Planting forests',.73);await new Promise(r=>setTimeout(r,0));if(this.terrain){await buildEcosystem(this,onProgress);buildLandmarks(this);}else this.buildVegetation();this.buildDecorations();this.buildWater();buildShoreline(this);this.batches=this.builder.finish();onProgress('Preparing the railway',.92);return this;}
  buildTerrain(){const b=this.builder,w=this.def,span=Math.max(w.rx,w.rz)*2.8,chunk=span/8,N=24;for(let iz=-8;iz<8;iz++)for(let ix=-8;ix<8;ix++){const verts=[],inds=[],x0=ix*chunk,z0=iz*chunk,step=chunk/N;for(let z=0;z<=N;z++)for(let x=0;x<=N;x++){const wx=x0+x*step,wz=z0+z*step,h=this.height(wx,wz);const e=5,n=norm([this.height(wx-e,wz)-this.height(wx+e,wz),2*e,this.height(wx,wz-e)-this.height(wx,wz+e)]);verts.push(wx,h,wz,...n,wx*.01,wz*.01);}for(let z=0;z<N;z++)for(let x=0;x<N;x++){const i=z*(N+1)+x;inds.push(i,i+N+1,i+1,i+1,i+N+1,i+N+2);}const center=[x0+chunk/2,this.baseHeight(x0+chunk/2,z0+chunk/2),z0+chunk/2];const batch=b.mesh(new Geometry(verts,inds),center,chunk*1.8,[1,.95,0,0]);batch.maxDistance=15000;}}
  buildWater(){const w=this.def,b=this.builder;const mesh=new MeshBuilder();const s=this.terrain?this.terrain.half:Math.max(w.rx,w.rz)*2.5;mesh.quad([-s,w.water,s],[s,w.water,s],[s,w.water,-s],[-s,w.water,-s],[0,1,0]);const batch=b.mesh(mesh.geometry(),[0,w.water,0],s*1.5,[2,.12,.1,0],hex(w.waterColor));batch.castShadow=false;batch.maxDistance=14000;}
  railCross(p,offset,y){return [p.p[0]+p.right[0]*offset,p.p[1]+y,p.p[2]+p.right[2]*offset];}
@@ -1152,11 +1778,10 @@ class RailwayWorld {
    }
    for(const c of pieces.values()){const bed=b.mesh(c.bed.geometry(),c.center,180,[7,.96,0,0],C.ballast);bed.maxDistance=5800;const rail=b.mesh(c.rail.geometry(),c.center,180,[0,.26,.85,0],C.rail);rail.maxDistance=4800;}
    for(let s=0;s<edge.length;s+=.86){const p=edge.at(s);b.oriented('box',frameMatrix(add(p.p,[0,-.015,0]),p.f,[2.7,.19,.25]),C.tie,[0,.96,0,0]);}
-   for(let s=13;s<edge.length;s+=27){const p=edge.at(s),ground=this.baseHeight(p.p[0],p.p[2]),gap=p.p[1]-ground;if(gap>13){this.features.bridges++;const high=p.p[1]-3.1,low=Math.max(w.water-3,ground);b.oriented('box',frameMatrix(add(p.p,[0,-1.18,0]),p.f,[5.4,1.7,27.1]),C.concrete,[6,.93,0,0]);b.oriented('box',frameMatrix([p.p[0],(high+low)/2,p.p[2]],p.f,[2.7,Math.max(1,high-low),2.4]),C.concrete,[6,.9,0,0]);b.oriented('box',frameMatrix(add(p.p,[0,-3.2,0]),p.f,[4.9,.8,3.4]),C.concrete);for(const side of [-1,1]){const a=this.railCross(edge.at(s-13.5),side*2.55,.85),z=this.railCross(edge.at(s+13.5),side*2.55,.85);b.segment(a,z,.09,C.railSide,[0,.6,.3,0]);for(const ds of [-12,-6,0,6,12]){const pp=edge.at(s+ds);b.instance('box',this.railCross(pp,side*2.55,.35),[.07,1.15,.07],C.railSide,[0,.65,.3,0]);}}}}
    if(electrified){for(let s=0;s<edge.length;s+=54){const p=edge.at(s),q=edge.at(Math.min(s+54,edge.length));const pole=this.railCross(p,-3.2,3.7);b.oriented('box',frameMatrix(pole,p.f,[.16,7.4,.17]),C.railSide,[0,.55,.5,0]);b.oriented('box',frameMatrix(this.railCross(p,-1.65,6.35),p.f,[3.5,.12,.13]),C.railSide,[0,.55,.5,0]);b.segment(this.railCross(p,-3.1,7.0),this.railCross(p,-.3,6.35),.065,C.railSide);b.instance('cylinder',this.railCross(p,-.1,6.15),[.16,.36,.16],hex('#4b544b'),[0,.45,.1,0]);b.segment(this.railCross(p,0,5.92),this.railCross(q,0,5.92),.027,C.dark,[0,.3,.5,0]);b.segment(this.railCross(p,0,6.65),this.railCross(q,0,6.65),.02,C.dark);b.segment(this.railCross(p,0,5.92),this.railCross(p,0,6.65),.022,C.dark);}}
    for(let s=360;s<edge.length-35;s+=400){const p=edge.at(s),pos=this.railCross(p,3.3,0);b.instance('cylinder',add(pos,[0,2.6,0]),[.14,5.2,.14],C.railSide);b.oriented('box',frameMatrix(add(pos,[0,5.1,0]),p.f,[.62,1.64,.25]),C.dark);this.signals.push({edge:edge.id,s,pos: add(pos,[0,5.1,0]),f:p.f});}
   }
-  this.buildJunction();this.buildGallery();
+  buildViaducts(this);this.buildJunction();this.buildGallery();
  }
  buildJunction(){const b=this.builder,p=this.network.edges.get('approach').at(this.network.edges.get('approach').length-12);b.oriented('box',frameMatrix(this.railCross(p,2.8,.18),p.f,[1.1,.36,.65]),hex('#827b66'));b.instance('cylinder',this.railCross(p,3.5,.7),[.07,1.2,.07],C.dark);b.oriented('box',frameMatrix(this.railCross(p,3.5,1.4),p.f,[.58,.32,.12]),hex('#e9c568'));}
  buildGallery(){const b=this.builder,w=this.def;if(['metro','sakura','coast'].includes(w.theme))return;const edge=this.network.edges.get('main'),start=edge.length*.46;for(let s=start;s<start+90;s+=6){const p=edge.at(s);b.oriented('box',frameMatrix(add(p.p,[0,6.3,0]),p.f,[9,1.5,6.15]),hex('#aaa89b'),[6,.95,0,0]);for(const side of [-1,1])b.oriented('box',frameMatrix(this.railCross(p,side*3.65,2.7),p.f,[.8,5.8,.85]),hex('#aaa89b'),[6,.95,0,0]);if(w.theme==='alpine'||w.theme==='nordic')b.oriented('box',frameMatrix(this.railCross(p,-4.2,3.6),p.f,[1.2,7.7,6.15]),hex(w.rock),[6,.96,0,0]);}}
@@ -1168,20 +1793,20 @@ class RailwayWorld {
    for(let i=0;i<9;i++){const pp=edge.at(st.s-25-i*11);this.buildPerson(this.railCross(pp,3.1+(i%3)*.8,1.01),i);}
   }}
  buildPerson(p,seed){const b=this.builder;const colors=['#4c687a','#a28872','#667663','#9b5851','#3d454d'];b.instance('cylinder',add(p,[0,.68,0]),[.42,.82,.30],hex(colors[seed%colors.length]));b.instance('sphere',add(p,[0,1.27,0]),[.29,.35,.29],hex('#c9a98b'));for(const side of [-1,1])b.instance('box',add(p,[side*.11,.22,0]),[.14,.47,.17],C.dark);}
- buildHouse(p,size,yaw=0,station=false){const b=this.builder,w=this.def,[sx,sy,sz]=size;const stone=['highland','alpine','nordic'].includes(w.theme);const bodyColor=station?hex('#d9cfb4'):hex(stone?'#c3c0ad':w.theme==='canyon'?'#c1a084':'#d0c7b3');const base=transform(p,[1,1,1],yaw);const part=(pos,scale,col,props=[0,.86,0,0],roll=0)=>b.oriented('box',mat4Mul(base,transform(pos,scale,0,0,roll)),col,props);
+ buildHouse(p,size,yaw=0,station=false){p=buildingFoundation(this,p,size,yaw,station);const b=this.builder,w=this.def,[sx,sy,sz]=size;const stone=['highland','alpine','nordic'].includes(w.theme);const bodyColor=station?hex('#d9cfb4'):hex(stone?'#c3c0ad':w.theme==='canyon'?'#c1a084':'#d0c7b3');const base=transform(p,[1,1,1],yaw);const part=(pos,scale,col,props=[0,.86,0,0],roll=0)=>b.oriented('box',mat4Mul(base,transform(pos,scale,0,0,roll)),col,props);
   part([0,sy*.5,0],[sx,sy,sz],bodyColor,[6,.96,0,0]);const roofColor=hex(w.theme==='nordic'?'#615c59':w.theme==='sakura'?'#525b5a':w.theme==='highland'?'#5f635e':'#7a6250');part([-sx*.265,sy+sx*.12,0],[sx*.58,.24,sz+1],roofColor,[0,.85,0,0],.42);part([sx*.265,sy+sx*.12,0],[sx*.58,.24,sz+1],roofColor,[0,.85,0,0],-.42);
   for(const side of [-1,1])for(let z=-sz*.35;z<=sz*.35;z+=Math.max(2.8,sz/7)){part([side*(sx*.5+.03),sy*.52,z],[.05,sy*.27,1.35],hex('#435c61'),[3,.18,.2,0]);part([side*(sx*.5+.08),sy*.37,z],[.15,.08,1.55],hex('#e0dac6'));}
   for(const end of [-1,1])for(const x of [-sx*.27,sx*.27]){part([x,sy*.58,end*(sz*.5+.035)],[1.45,1.8,.08],hex('#3d5358'),[3,.26,.15,0]);part([x,sy*.58,end*(sz*.5+.082)],[.065,1.82,.035],hex('#d7d0bd'));part([x,sy*.58,end*(sz*.5+.084)],[1.46,.065,.035],hex('#d7d0bd'));part([x,sy*.58-.94,end*(sz*.5+.09)],[1.66,.10,.20],hex('#d2cbb6'));}
   for(const side of [-1,1]){part([side*(sx*.5+.13),sy-.08,0],[.14,.18,sz+.4],hex('#4a504a'),[0,.8,.25,0]);part([side*(sx*.5+.02),.23,0],[.08,.46,sz],hex('#a29e8e'),[6,.9,0,0]);}
   part([0,sy*.32,sz*.5+.03],[sx*.17,sy*.60,.07],hex('#5d675c'));part([sx*.27,sy+sx*.32,sz*.27],[1,2.7,1.1],hex('#92897b'));this.features.buildings++;}
- buildTownscapes(){const b=this.builder,w=this.def,r=this.random;for(const st of this.stations){const origin=this.network.edges.get(st.edge).at(st.s-60);const yaw=Math.atan2(origin.f[0],origin.f[2]);const count=w.theme==='metro'?64:w.theme==='canyon'?12:25;for(let i=0;i<count;i++){const along=(r()-.5)*600,across=35+r()*290;const p=add(add(origin.p,mul(origin.f,along)),mul(origin.right,across));p[1]=this.height(p[0],p[2]);if(p[1]<w.water+3)continue;const size=[7+r()*8,4.5+r()*5,8+r()*11];if(w.theme==='metro'){size[0]=18+r()*23;size[1]=20+r()**2*160;size[2]=18+r()*22;this.buildTower(p,size,yaw);}else this.buildHouse(p,size,yaw+(r()-.5)*.3);}
+ buildTownscapes(){const b=this.builder,w=this.def,r=this.random;for(const st of this.stations){const origin=this.network.edges.get(st.edge).at(st.s-60);const yaw=Math.atan2(origin.f[0],origin.f[2]);const count=w.theme==='metro'?64:w.theme==='canyon'?12:25;for(let i=0;i<count;i++){const along=(r()-.5)*600,across=35+r()*290;const p=add(add(origin.p,mul(origin.f,along)),mul(origin.right,across));p[1]=this.height(p[0],p[2]);if(p[1]<w.water+3)continue;const size=[7+r()*8,4.5+r()*5,8+r()*11];if(w.theme==='metro'){size[0]=18+r()*23;size[1]=20+r()**2*160;size[2]=18+r()*22;this.buildTower(p,size,yaw);}else {const rotation=yaw+(r()-.5)*.3;if(foundation(this,p,size,rotation).spread>size[1]*.75)continue;if(this.network.nearest(p[0],p[2],Math.hypot(size[0],size[2])*.55+7))continue;this.buildHouse(p,size,rotation);}}
    for(let ds=-230;ds<200;ds+=12){const pp=add(add(origin.p,mul(origin.f,ds)),mul(origin.right,29));pp[1]=this.height(pp[0],pp[2])+.05;b.oriented('box',frameMatrix(pp,origin.f,[7,.08,12.1]),hex('#676c66'),[6,.97,0,0]);b.oriented('box',frameMatrix(add(pp,[0,.047,0]),origin.f,[.12,.01,4]),hex('#d0cbbb'));}
    for(let i=0;i<7;i++){const pp=add(add(origin.p,mul(origin.f,-70+i*12)),mul(origin.right,23));pp[1]=this.height(pp[0],pp[2]);this.buildCar(pp,yaw,i);}
   }
   if(w.theme==='sakura'){for(let i=0;i<120;i++){const x=(r()-.5)*w.rx*3,z=(r()-.5)*w.rz*3,h=this.height(x,z);if(h<w.water+8||h>w.railY+25)continue;b.instance('box',[x,h+.08,z],[30,.13,55],hex(i%2?'#98ad66':'#7c9a60'),[6,.95,0,0]);}}
   if(w.theme==='coast'){const p=this.network.edges.get('return').at(400);const pos=add(p.p,mul(p.right,55));pos[1]=this.height(pos[0],pos[2]);b.instance('cylinder',add(pos,[0,12,0]),[6,24,6],hex('#e6dfcb'));b.instance('cylinder',add(pos,[0,24,0]),[7.5,2,7.5],hex('#9d5a4c'));b.instance('cylinder',add(pos,[0,27,0]),[4.2,4,4.2],hex('#d1dccb'),[3,.25,.2,0]);b.instance('cone',add(pos,[0,30,0]),[7,3,7],hex('#654a41'));}
  }
- buildTower(p,size,yaw){const b=this.builder,[sx,sy,sz]=size;const base=transform(p,[1,1,1],yaw);b.oriented('box',mat4Mul(base,transform([0,sy*.5,0],size)),hex('#555f69'),[3,.4,.2,0]);for(let y=3;y<sy;y+=3.3){for(const side of [-1,1]){b.oriented('box',mat4Mul(base,transform([side*(sx/2+.04),y,0],[.13,.17,sz+.1])),hex('#869398'));for(let z=-sz/2+2;z<sz/2;z+=3.6){const lit=((y*5+z*3+sx)|0)%4!==0;b.oriented('box',mat4Mul(base,transform([side*(sx/2+.09),y+1.25,z],[.025,1.7,2.2])),lit?hex('#ccb987'):hex('#2b414e'),[lit?4:3,.3,.1,lit?1.25:0]);}}}this.features.buildings++;}
+ buildTower(p,size,yaw){p=buildingFoundation(this,p,size,yaw);const b=this.builder,[sx,sy,sz]=size;const base=transform(p,[1,1,1],yaw);b.oriented('box',mat4Mul(base,transform([0,sy*.5,0],size)),hex('#555f69'),[3,.4,.2,0]);for(let y=3;y<sy;y+=3.3){for(const side of [-1,1]){b.oriented('box',mat4Mul(base,transform([side*(sx/2+.04),y,0],[.13,.17,sz+.1])),hex('#869398'));for(let z=-sz/2+2;z<sz/2;z+=3.6){const lit=((y*5+z*3+sx)|0)%4!==0;b.oriented('box',mat4Mul(base,transform([side*(sx/2+.09),y+1.25,z],[.025,1.7,2.2])),lit?hex('#ccb987'):hex('#2b414e'),[lit?4:3,.3,.1,lit?1.25:0]);}}}this.features.buildings++;}
  buildCar(p,yaw,index){const b=this.builder,base=transform(p,[1,1,1],yaw);const color=hex(['#bdc3bf','#455c67','#894e43','#b9ac8f'][index%4]);b.oriented('body',mat4Mul(base,transform([0,.8,0],[1.75,.8,4.2])),color,[0,.3,.5,0]);b.oriented('body',mat4Mul(base,transform([0,1.35,-.12],[1.52,.8,2.35])),hex('#35474b'),[3,.2,.3,0]);for(const x of [-.85,.85])for(const z of [-1.25,1.25])b.oriented('cylinder',mat4Mul(base,transform([x,.43,z],[.6,.18,.6],0,0,Math.PI*.5)),C.dark);}
  buildVegetation(){const w=this.def,r=this.random,b=this.builder;const desired=Math.round(w.trees*1.65);let placed=0;for(let tries=0;tries<desired*6&&placed<desired;tries++){const x=(r()-.5)*w.rx*4,z=(r()-.5)*w.rz*4;const h=this.height(x,z);if(h<w.water+2||h>w.snowLine+20)continue;const near=this.network.nearest(x,z,22);if(near&&near.distance<8)continue;let stationArea=false;for(const st of this.stations){const p=this.network.edges.get(st.edge).at(st.s-65);const d=sub([x,h,z],p.p),side=d[0]*p.right[0]+d[2]*p.right[2],along=d[0]*p.f[0]+d[2]*p.f[2];if(side>-32&&side<38&&Math.abs(along)<180)stationArea=true;}if(stationArea)continue;const h1=this.baseHeight(x+8,z),h2=this.baseHeight(x,z+8);if(Math.abs(h1-h)>17||Math.abs(h2-h)>17)continue;if(noise2(x*.005,z*.005,this.seed)<.26)continue;
   const scale=10+r()*14;this.tree([x,h,z],scale,r());placed++;}
@@ -1293,11 +1918,12 @@ function vehicleDetails(stock,index,last) {
  }
  if(loco) {
   if(['electric','highspeed','metro'].includes(stock.kind)) {
-   for(let z=-L*.31;z<L*.28;z+=1.65) {
-    for(const side of [-1,1]){part('spring',[side*.74,5.20,z],[.21,.42,.21],hex('#77745d'),PAINT,[0,0,0],'roof',2);pipe([side*.74,5.43,z],[side*.74,5.43,Math.min(z+1.65,L*.28)],.055,hex('#a88756'),'roof');}
+   const roofEnd=stock.kind==='highspeed'?L*.5-7.7:L*.28;
+   for(let z=-L*.31;z<roofEnd;z+=1.65) {
+    for(const side of [-1,1]){part('spring',[side*.74,5.20,z],[.21,.42,.21],hex('#77745d'),PAINT,[0,0,0],'roof',2);pipe([side*.74,5.43,z],[side*.74,5.43,Math.min(z+1.65,roofEnd)],.055,hex('#a88756'),'roof');}
    }
    box([0,5.19,-L*.34],[1.5,.25,.66],dark,STEEL,'roof');
-   for(const side of [-1,1])part('cone',[side*.58,5.27,L*.26],[.24,.6,.24],silver,STEEL,[0,Math.PI/2,0],'roof');
+   for(const side of [-1,1])part('cone',[side*.58,5.27,Math.min(L*.26,roofEnd-.4)],[.24,.6,.24],silver,STEEL,[0,Math.PI/2,0],'roof');
   }
   if(stock.kind==='diesel') {
    for(const z of [-7,-3]) {
@@ -1341,7 +1967,7 @@ function vehicleDetails(stock,index,last) {
    part('cylinder',[x,3.12,cabZ+.76],[.21,.016,.21],hex('#d9d7c5'),PAINT,[0,0,0],'cab');
    box([x,3.135,cabZ+.73],[.009,.007,.09],dark,RUBBER,'cab',2);
   }
-  if(stock.kind!=='steam')for(const side of [-1,1]) {
+  if(!['steam','highspeed'].includes(stock.kind))for(const side of [-1,1]) {
    const z=L*.487;pipe([side*.75,3.22,z+.025],[side*.36,4.14,z+.025],.035,dark,'wiper',1);
    box([side*.45,4.34,z],[.20,.06,.08],silver,STEEL,'detail',2);
    for(const dx of [-.25,.25])box([side*1.01+dx,2.55,L*.503],[.025,.37,.04],dark,STEEL);
@@ -1407,9 +2033,11 @@ return {vehicleDetails,bogieDetails,bakeAssemblies};
 })();
 // ---- src/rolling-stock.js ----
 const __m_src_rolling_stock_js = (() => {
+const {highSpeedNose} = __m_src_cinematic_models_js;
 const {vehicleDetails,bogieDetails,bakeAssemblies} = __m_src_train_detail_js;
 const {hex,transform,frameMatrix,mat4Mul,add,sub,mul,norm,pointTransform,TAU,clamp} = __m_src_math_js;
 const {Batch,PRIMITIVES,MeshBuilder} = __m_src_geometry_js;
+
 
 
 
@@ -1426,16 +2054,16 @@ class RollingStockRenderer {
   const part=(g,p,s,c=col,pr=PAINT,rot=[0,0,0],role='')=>parts.push({g,m:transform(p,s,...rot),c,pr,role});
   const box=(p,s,c=col,pr=PAINT,role='')=>part('box',p,s,c,pr,[0,0,0],role);
   const rod=(a,b,r=.05,c=METAL,role='')=>parts.push({g:'cylinder',m:mat4Mul(frameMatrix(mul(add(a,b),.5),sub(b,a)),transform([0,0,0],[r,Math.hypot(...sub(b,a)),r],0,Math.PI/2,0)),c,pr:STEEL,role});
-  box([0,1.16,0],[2.82,.5,L-.9],DARK,RUBBER);box([0,1.62,0],[3.16,.28,L-.2],col);
+  const streamlined=isLoco&&stock.kind==='highspeed';box([0,1.16,streamlined?-3.5:0],[2.82,.5,L-(streamlined?7:.9)],DARK,RUBBER);box([0,1.62,streamlined?-3.5:0],[3.16,.28,L-(streamlined?7:.2)],col);
   if(stock.kind==='diesel'&&!isLoco){const containers=['#aa593e','#526f76','#9b9a7b','#556b50'];if(index%4===0){part('cylinder',[0,2.9,0],[2.8,L-3,2.8],hex('#acaea1'),[0,.43,.45,0],[0,Math.PI/2,0]);part('sphere',[0,2.9,L*.5-1.5],[2.8,2.8,2.8],hex('#acaea1'));part('sphere',[0,2.9,-L*.5+1.5],[2.8,2.8,2.8],hex('#acaea1'));box([0,4.35,0],[.5,.4,.7],DARK);}else{const cc=hex(containers[index%4]);box([0,2.95,0],[2.65,2.55,L-2.8],cc,[0,.72,.15,0]);for(const side of [-1,1]){for(let z=-L*.5+1.8;z<L*.5-1.8;z+=.62)box([side*1.34,2.93,z],[.06,2.48,.07],cc,[0,.74,.15,0]);box([side*1.345,4.15,0],[.08,.1,L-2.65],METAL);}}}
   else if(stock.kind==='steam'&&isLoco){part('cylinder',[0,3.03,3.1],[2.45,11.8,2.45],col,PAINT,[0,Math.PI/2,0],'shell');part('cylinder',[0,3.03,9.05],[2.53,.22,2.53],BLACK,PAINT,[0,Math.PI/2,0]);for(const z of [-1.5,.3,2.3,4.3,6.3])part('cylinder',[0,3.03,z],[2.51,.08,2.51],hex('#9a9c82'),STEEL,[0,Math.PI/2,0]);part('cylinder',[0,4.7,6.7],[.65,1.6,.65],BLACK);part('cylinder',[0,5.4,6.7],[.87,.15,.87],BLACK);part('sphere',[0,4.28,2],[.9,1.05,.9],hex('#b99854'));box([0,3.07,-4.25],[3.08,3.22,4.2],col,PAINT,'shell');box([0,4.78,-4.25],[3.4,.3,4.6],BLACK);for(const side of [-1,1])box([side*1.553,3.8,-3.6],[.04,1.25,1.7],GLASS,WINDOW,'glass');box([0,2.8,-9.3],[3.14,2.55,5.65],col);box([0,4.08,-9.3],[2.84,.13,5.25],BLACK,RUBBER);for(const side of [-1,1]){box([side*1.62,1.52,2.7],[.65,.14,14.2],DARK);rod([side*1.5,3.5,-2],[side*1.5,3.5,8.5],.065,hex('#c3af75'));}box([0,3.1,9.3],[.53,.62,.3],CREAM,[4,.2,0,3],'headlight');}
   else if(stock.kind==='diesel'&&isLoco){box([0,3.18,-2.8],[2.68,3.12,L*.61],col);box([0,3.35,L*.28],[3.2,3.5,5.4],col,PAINT,'shell');box([0,5.18,L*.28],[3.38,.22,5.8],DARK);box([0,4.25,L*.405],[2.67,1.2,.08],GLASS,WINDOW,'glass');for(const side of [-1,1]){box([side*1.62,4.22,L*.28],[.07,1.2,2.9],GLASS,WINDOW,'glass');box([side*1.46,3.35,-3.9],[.04,1.8,L*.41],DARK);for(let z=-L*.38;z<L*.07;z+=.4)box([side*1.49,3.35,z],[.05,1.72,.08],hex('#72786a'));box([side*1.72,1.65,0],[.45,.18,L-.4],DARK);rod([side*1.84,2.75,-L*.45],[side*1.84,2.75,L*.44],.055,CREAM);for(let z=-L*.42;z<L*.4;z+=2)rod([side*1.84,1.7,z],[side*1.84,2.75,z],.048,CREAM);}box([0,2.3,L*.47],[2.85,1.4,1.3],col);for(const x of [-.85,.85])box([x,3.01,L*.502],[.4,.23,.11],CREAM,[4,.25,0,5],'headlight');for(const z of [-7,-3])part('cylinder',[0,4.85,z],[1.75,.2,1.75],DARK);}
-  else{const hs=stock.kind==='highspeed'&&isLoco;const bodyLen=hs?L-6:L-.9;part('body',[0,3.1,hs?-2:0],[3.17,3.42,bodyLen],col,PAINT,[0,0,0],'shell');box([0,4.87,hs?-2:0],[2.47,.16,bodyLen-.4],hex('#c8ceca'));for(const side of [-1,1]){box([side*1.587,2.5,hs?-2:0],[.028,.36,bodyLen-.5],stripe);box([side*1.587,1.9,hs?-2:0],[.028,.18,bodyLen-.5],DARK);const start=-L*.5+2.6,end=hs?L*.22:L*.5-2.6;for(let z=start;z<end;z+=2.24)box([side*1.593,3.68,z],[.025,1.06,1.65],GLASS,WINDOW,'glass');for(const z of [-L*.37,(hs?L*.18:L*.37)]){box([side*1.607,2.98,z],[.045,2.62,1.28],col,PAINT,`door${side}`);box([side*1.634,3.69,z],[.024,.89,.86],GLASS,WINDOW,`door${side}`);box([side*1.644,2.79,z+.46],[.028,.24,.035],METAL,STEEL,`door${side}`);box([side*1.72,1.64,z],[.36,.11,1.43],DARK);}if(isLoco)part('label',[side*1.609,2.05,-3],[1,.50,.50],hex('#f2ede1'),[0,.7,0,0],[side<0?Math.PI:0,0,0]);}
-   if(isLoco){if(hs){part('nose',[0,3.0,L*.35],[3.18,3.35,7.3],col,PAINT,[0,0,0],'shell');box([0,3.77,L*.35],[2.55,.76,.17],GLASS,WINDOW,'glass');for(const side of [-1,1])box([side*.83,2.21,L*.535],[.55,.2,.08],CREAM,[4,.24,0,5],'headlight');}else{box([0,3.72,L*.481],[2.66,1.13,.055],GLASS,WINDOW,'glass');box([0,3.72,L*.488],[.065,1.19,.08],DARK);box([0,2.39,L*.49],[2.9,1.03,.18],col);box([0,1.93,L*.495],[2.92,.22,.2],stripe);for(const x of [-1.01,1.01])box([x,2.55,L*.502],[.39,.27,.065],CREAM,[4,.23,0,4.5],'headlight');box([0,4.36,L*.484],[.36,.18,.07],CREAM,[4,.25,0,2.5],'headlight');}
-    box([0,4.93,L*.34],[2.64,.09,2.9],DARK);box([0,2.67,L*.37],[2.82,.25,1.0],DARK);box([0,2.91,L*.395],[1.17,.12,.63],hex('#30464b'));box([-.5,2.991,L*.394],[.46,.015,.35],hex('#559d9a'),[4,.4,0,.6]);box([.5,2.991,L*.394],[.33,.015,.3],hex('#50745d'),[4,.4,0,.5]);for(const side of [-1,1])box([side*1.44,3.6,L*.465],[.11,2.12,.14],DARK);box([0,4.57,L*.465],[2.98,.11,.15],DARK);box([0,2.43,L*.465],[2.98,.15,.15],DARK);
+  else{const hs=stock.kind==='highspeed'&&isLoco;const bodyLen=hs?L-7:L-.9;part('body',[0,3.1,hs?-3.5:0],[3.17,3.42,bodyLen],col,PAINT,[0,0,0],'shell');box([0,4.87,hs?-3.5:0],[2.47,.16,bodyLen-.4],hex('#c8ceca'));for(const side of [-1,1]){box([side*1.587,2.5,hs?-3.5:0],[.028,.36,bodyLen-.5],stripe);box([side*1.587,1.9,hs?-3.5:0],[.028,.18,bodyLen-.5],DARK);const start=-L*.5+2.6,end=hs?L*.22:L*.5-2.6;for(let z=start;z<end;z+=2.24)box([side*1.593,3.68,z],[.025,1.06,1.65],GLASS,WINDOW,'glass');for(const z of [-L*.37,(hs?L*.18:L*.37)]){box([side*1.607,2.98,z],[.045,2.62,1.28],col,PAINT,`door${side}`);box([side*1.634,3.69,z],[.024,.89,.86],GLASS,WINDOW,`door${side}`);box([side*1.644,2.79,z+.46],[.028,.24,.035],METAL,STEEL,`door${side}`);box([side*1.72,1.64,z],[.36,.11,1.43],DARK);}if(isLoco)part('label',[side*1.609,2.05,-3],[1,.50,.50],hex('#f2ede1'),[0,.7,0,0],[side<0?Math.PI:0,0,0]);}
+   if(isLoco){if(hs){parts.push(...highSpeedNose(stock));for(const side of [-1,1])part('sphere',[side*.27,1.97,L*.491],[.22,.13,.055],CREAM,[4,.24,0,5],[0,0,0],'headlight');}else{box([0,3.72,L*.481],[2.66,1.13,.055],GLASS,WINDOW,'glass');box([0,3.72,L*.488],[.065,1.19,.08],DARK);box([0,2.39,L*.49],[2.9,1.03,.18],col);box([0,1.93,L*.495],[2.92,.22,.2],stripe);for(const x of [-1.01,1.01])box([x,2.55,L*.502],[.39,.27,.065],CREAM,[4,.23,0,4.5],'headlight');box([0,4.36,L*.484],[.36,.18,.07],CREAM,[4,.25,0,2.5],'headlight');}
+    if(!hs)box([0,4.93,L*.34],[2.64,.09,2.9],DARK,PAINT,'cab');box([0,2.67,L*.37],[2.82,.25,1.0],DARK,PAINT,'cab');box([0,2.91,L*.395],[1.17,.12,.63],hex('#30464b'),PAINT,'cab');box([-.5,2.991,L*.394],[.46,.015,.35],hex('#559d9a'),[4,.4,0,.6],'cab');box([.5,2.991,L*.394],[.33,.015,.3],hex('#50745d'),[4,.4,0,.5],'cab');if(!hs){for(const side of [-1,1])box([side*1.44,3.6,L*.465],[.11,2.12,.14],DARK,PAINT,'cab');box([0,4.57,L*.465],[2.98,.11,.15],DARK,PAINT,'cab');box([0,2.43,L*.465],[2.98,.15,.15],DARK,PAINT,'cab');}
    }
   }
-  if(isLoco&&['electric','highspeed','metro'].includes(stock.kind)){for(const z of [-L*.21,L*.15]){box([0,5.04,z],[1.8,.25,2.3],hex('#818b82'));for(const side of [-1,1]){rod([side*.42,5.05,z-1.05],[side*.42,5.52,z+.4],.067,DARK,'pantograph');rod([side*.42,5.52,z+.4],[side*.42,5.96,z-.3],.067,DARK,'pantograph');}box([0,5.99,z-.3],[1.6,.06,.22],METAL,STEEL,'pantograph');}for(let z=-L*.33;z<L*.3;z+=2.6)box([0,4.99,z],[1.3,.22,1.1],hex('#a5ada5'));}
+  if(isLoco&&['electric','highspeed','metro'].includes(stock.kind)){for(const z of [-L*.21,L*.15]){box([0,5.04,z],[1.8,.25,2.3],hex('#818b82'));for(const side of [-1,1]){rod([side*.42,5.05,z-1.05],[side*.42,5.52,z+.4],.067,DARK,'pantograph');rod([side*.42,5.52,z+.4],[side*.42,5.96,z-.3],.067,DARK,'pantograph');}box([0,5.99,z-.3],[1.6,.06,.22],METAL,STEEL,'pantograph');}for(let z=-L*.33;z<(stock.kind==='highspeed'?L*.5-8:L*.3);z+=2.6)box([0,4.99,z],[1.3,.22,1.1],hex('#a5ada5'));}
   if(!isLoco&&stock.kind!=='diesel'){box([0,3.05,L*.498],[2.43,2.48,.14],DARK);box([0,3.04,-L*.498],[2.43,2.48,.14],DARK);box([0,2.92,L*.505],[1.17,2.16,.1],hex('#78837e'));}
   for(const z of [-L*.5-.2,L*.5+.2]){box([0,1.1,z],[.28,.23,.63],METAL,STEEL);for(const side of [-1,1]){part('cylinder',[side*.92,1.19,z],[.32,.35,.32],DARK,RUBBER,[0,Math.PI/2,0]);}}
   if(last){for(const x of [-1.05,1.05])box([x,2.36,-L*.503],[.18,.22,.05],hex('#d53e2c'),[4,.4,0,2]);}
@@ -1451,7 +2079,7 @@ this.emit('box',mat4Mul(base,transform([0,1.00,0],[2.3,.48,3.2])),DARK,RUBBER);f
   for(const side of [-1,1])this.emit('box',mat4Mul(base,transform([side*1.19,1.13,0],[.20,.36,3.17])),hex('#53615a'),STEEL);
  }
  drawTrain(train,cameraMode){for(let i=0;i<=train.cars;i++){const off=train.carOffset(i),L=i===0?train.stock.locoLength:train.stock.carLength,a=train.cursor.pose(off+L*.33),z=train.cursor.pose(off-L*.33),p=train.cursor.pose(off);const base=frameMatrix(p.p,sub(a.p,z.p));const distance=Math.hypot(p.p[0]-this.cameraPosition[0],p.p[1]-this.cameraPosition[1],p.p[2]-this.cameraPosition[2]);
-   const parts=this.model(train.stock,i,i===train.cars);for(const part of parts){if((part.tier===1&&distance>450)||(part.tier===2&&distance>100))continue;if(train.id==='player'&&i===0&&cameraMode==='cab'&&(part.role==='shell'||part.role==='glass'||part.role==='seal'||part.role==='wiper'))continue;let local=part.m,props=part.pr;if(part.role==='pantograph'&&!train.controls.pantograph)local=mat4Mul(mat4Mul(transform([0,4.84,0],[1,.12,1]),transform([0,-4.84,0])),local);if(part.role.startsWith('door'))local=mat4Mul(transform([0,0,train.doorAmount*.9]),local);if(part.role==='headlight'&&!train.controls.headlights)props=[0,.25,.3,0];this.emit(part.g,mat4Mul(base,local),part.c,props);}
+   const parts=this.model(train.stock,i,i===train.cars);for(const part of parts){if(part.role==='cab'&&!(train.id==='player'&&i===0&&cameraMode==='cab'))continue;if((part.tier===1&&distance>450)||(part.tier===2&&distance>100))continue;if(train.id==='player'&&i===0&&cameraMode==='cab'&&(part.role==='shell'||part.role==='glass'||part.role==='seal'||part.role==='wiper'))continue;let local=part.m,props=part.pr;if(part.role==='pantograph'&&!train.controls.pantograph)local=mat4Mul(mat4Mul(transform([0,4.84,0],[1,.12,1]),transform([0,-4.84,0])),local);if(part.role.startsWith('door'))local=mat4Mul(transform([0,0,train.doorAmount*.9]),local);if(part.role==='headlight'&&!train.controls.headlights)props=[0,.25,.3,0];this.emit(part.g,mat4Mul(base,local),part.c,props);}
    const phase=-train.cursor.odometer/.55;
    if(train.stock.kind==='steam'&&i===0){for(const zz of [-2.4,0,2.4])for(const side of [-1,1]){const wp=[side*1.12,1.03,zz];this.emit('cylinder',mat4Mul(base,transform(wp,[1.68,.19,1.68],0,0,Math.PI/2)),BLACK,STEEL);for(let spoke=0;spoke<8;spoke++){const angle=phase+spoke*Math.PI/4;const m=mat4Mul(transform(wp,[1,1,1],0,angle),transform([0,0,0],[.13,1.48,.045]));this.emit('box',mat4Mul(base,m),hex('#9fa598'),STEEL);}}for(const side of [-1,1]){const y=1.03+Math.sin(phase)*.45,z=Math.cos(phase)*.45;this.emit('box',mat4Mul(base,transform([side*1.26,y,z],[.11,.14,5.25])),METAL,STEEL);}for(const zz of [-9,7.4])this.emitBogie(mat4Mul(base,transform([0,0,zz],[.9,1,.7])),train,true,phase);}
    else{this.emitBogie(frameMatrix(a.p,a.f),train,i===0,phase);this.emitBogie(frameMatrix(z.p,z.f),train,i===0,phase);}
@@ -1478,16 +2106,20 @@ const {add,sub,mul,norm,mix3,clamp,cross,frameMatrix,pointTransform} = __m_src_m
 
 const CAMERA_MODES=['cab','chase','orbit','aerial','trackside','free'];
 class CameraRig {
- constructor(){this.mode='chase';this.position=[0,100,0];this.target=[0,60,0];this.distance=90;this.azimuth=-.87;this.elevation=.28;this.fov=56;this.initial=true;this.cabYaw=0;this.cabPitch=0;this.trackAnchor=null;this.freeYaw=0;this.freePitch=0;this.photoOrbit=false;}
+ constructor(){this.mode='chase';this.position=[0,100,0];this.target=[0,60,0];this.distance=90;this.azimuth=-.87;this.elevation=.28;this.fov=56;this.initial=true;this.cabYaw=0;this.cabPitch=0;this.trackAnchor=null;this.freeYaw=0;this.freePitch=0;this.photoOrbit=false;this.motion=true;}
  setMode(mode){if(!CAMERA_MODES.includes(mode))return;this.mode=mode;this.initial=true;this.trackAnchor=null;if(mode==='aerial')this.distance=480;else if(mode==='chase'||mode==='orbit')this.distance=90;if(mode==='free'){const f=norm(sub(this.target,this.position));this.freeYaw=Math.atan2(f[0],f[2]);this.freePitch=Math.asin(f[1]);}}
  rotate(dx,dy){if(this.mode==='cab'){this.cabYaw=clamp(this.cabYaw-dx*.004,-1.55,1.55);this.cabPitch=clamp(this.cabPitch-dy*.003,-.6,.6);}else if(this.mode==='free'){this.freeYaw-=dx*.004;this.freePitch=clamp(this.freePitch-dy*.003,-1.5,1.5);}else{this.azimuth-=dx*.005;this.elevation=clamp(this.elevation+dy*.004,.055,1.48);}}
  zoom(delta){if(this.mode==='cab'){this.fov=clamp(this.fov+delta*.02,38,90);return;}this.distance=clamp(this.distance*Math.exp(delta*.001),10,2200);}
- update(train,world,dt,keys){const p=train.cursor.pose(),pose=train.cursor.pose((globalThis.innerWidth/globalThis.innerHeight||1.6)<.75?-2:-Math.min(train.length*.25,40)),f=p.f,right=p.right;let eye,aim;
+ update(train,world,dt,keys){const p=train.cursor.pose(),pose=train.cursor.pose((globalThis.innerWidth/globalThis.innerHeight||1.6)<.75?-2:-Math.min(train.length*.25,40)),f=p.f,right=p.right,surface=world.surfaceHeight?.bind(world)||world.height.bind(world);let eye,aim;
   if(this.mode==='free'){const dir=[Math.sin(this.freeYaw)*Math.cos(this.freePitch),Math.sin(this.freePitch),Math.cos(this.freeYaw)*Math.cos(this.freePitch)],r=norm(cross([0,1,0],dir));const speed=(keys?.has('ShiftLeft')?180:38)*dt;for(const [key,vec]of [['KeyW',dir],['KeyS',mul(dir,-1)],['KeyD',r],['KeyA',mul(r,-1)],['KeyE',[0,1,0]],['KeyQ',[0,-1,0]]])if(keys?.has(key))this.position=add(this.position,mul(vec,speed));this.target=add(this.position,mul(dir,50));return;}
-  if(this.mode==='cab'){eye=add(add(p.p,mul(f,train.stock.kind==='steam'?-3:train.stock.locoLength*.34)),[0,3.78,0]);eye=add(eye,mul(right,-.45));const look=norm(add(add(mul(f,Math.cos(this.cabYaw)),mul(right,Math.sin(this.cabYaw))),[0,this.cabPitch,0]));aim=add(eye,mul(look,90));const vibration=Math.min(Math.abs(train.speed)/35,1)*.01;eye[1]+=Math.sin(train.cursor.odometer*1.7)*vibration;this.position=eye;this.target=aim;this.initial=false;return;}
+  if(this.mode==='cab'){eye=add(add(p.p,mul(f,train.stock.kind==='steam'?-3:train.stock.locoLength*(train.stock.kind==='highspeed'?.27:.34))),[0,3.78,0]);eye=add(eye,mul(right,-.45));const look=norm(add(add(mul(f,Math.cos(this.cabYaw)),mul(right,Math.sin(this.cabYaw))),[0,this.cabPitch,0]));aim=add(eye,mul(look,90));const vibration=this.motion?Math.min(Math.abs(train.speed)/35,1)*.014:0;eye[1]+=Math.sin(train.cursor.odometer*1.7)*vibration;eye=add(eye,mul(right,Math.sin(train.cursor.odometer*.11)*vibration*1.2));this.position=eye;this.target=aim;this.initial=false;return;}
   if(this.mode==='trackside'){if(!this.trackAnchor||Math.hypot(...sub(this.trackAnchor,p.p))>210){const ahead=train.cursor.pose(100);this.trackAnchor=add(add(ahead.p,mul(ahead.right,-20)),[0,4,0]);}eye=this.trackAnchor;aim=add(p.p,[0,2.5,0]);}
-  else{if(this.photoOrbit&&this.mode==='orbit')this.azimuth+=dt*.12;aim=add(pose.p,[0,2.4,0]);const el=this.mode==='aerial'?Math.max(.8,this.elevation):this.elevation;const horizontal=this.distance*Math.cos(el);eye=add(add(add(aim,mul(right,Math.sin(this.azimuth)*horizontal)),mul(f,Math.cos(this.azimuth)*horizontal)),[0,Math.sin(el)*this.distance,0]);const ground=world.height(eye[0],eye[2]);eye[1]=Math.max(eye[1],ground+2.5,world.def.water+3);}
-  const alpha=this.initial?1:1-Math.exp(-dt*(this.mode==='chase'?4.8:7));this.position=mix3(this.position,eye,alpha);this.target=mix3(this.target,aim,alpha);this.initial=false;
+  else{if(this.photoOrbit&&this.mode==='orbit')this.azimuth+=dt*.12;aim=add(pose.p,[0,2.4,0]);const el=this.mode==='aerial'?Math.max(.8,this.elevation):this.elevation;const horizontal=this.distance*Math.cos(el);eye=add(add(add(aim,mul(right,Math.sin(this.azimuth)*horizontal)),mul(f,Math.cos(this.azimuth)*horizontal)),[0,Math.sin(el)*this.distance,0]);const ground=surface(eye[0],eye[2]);eye[1]=Math.max(eye[1],ground+2.5,world.def.water+3);}
+  if(this.mode==='chase'||this.mode==='orbit'){
+   // Raise the boom over the rendered surface. Shortening it toward the target
+   // could put the camera inside a coach in a steep cutting.
+   for(let i=1;i<=16;i++){const t=i/16,q=mix3(aim,eye,t),ground=surface(q[0],q[2])+2.5;if(q[1]<ground)eye[1]=Math.max(eye[1],aim[1]+(ground-aim[1])/t);}
+  }const alpha=this.initial?1:1-Math.exp(-dt*(this.mode==='chase'?4.8:7));this.position=mix3(this.position,eye,alpha);this.target=mix3(this.target,aim,alpha);this.position[1]=Math.max(this.position[1],surface(this.position[0],this.position[2])+2.5);this.initial=false;
  }
 }
 
@@ -1495,18 +2127,67 @@ return {CAMERA_MODES,CameraRig};
 })();
 // ---- src/audio.js ----
 const __m_src_audio_js = (() => {
+const {clamp,rng} = __m_src_math_js;
+/** Procedural layered sound, bounded voice count, no autoplay or external media.
+ * A compressor protects against rail, rain, brake and horn transients summing.
+ */
 
-/** Procedural, speed/load-dependent rail audio. No media downloads or autoplay assumptions. */
+function audioMix(train,weather,cameraMode='chase',hour=12){
+ const speed=Math.abs(train.speed),c=train.controls,cab=cameraMode==='cab',steam=train.stock.kind==='steam';
+ const diesel=['diesel','regional'].includes(train.stock.kind),rain=['rain','storm'].includes(weather);
+ return {pitch:steam?42+speed*2.6:diesel?32+c.throttle*32+speed*.6:45+speed*5.4,
+  motor:c.master?(diesel?.035+c.throttle*.085:steam?.026:.008+c.throttle*.045):0,
+  rail:clamp(speed*.006,0,.32)*(cab?.62:1),wind:clamp(speed*speed*.000017,0,.14)*(cab?.4:1),
+  squeal:clamp((train.risk||0)*.027,0,.08)*clamp(speed/5,0,1),brake:clamp(c.brake*speed*.003,0,.075),
+  rain:rain?(cab?.022:.065):0,ambient:hour>6&&hour<20?(rain?.003:.013):.006,cab,steam,diesel};
+}
 class RailAudio {
- constructor(){this.enabled=false;this.context=null;this.volume=.36;this.horning=false;}
- async enable(){if(!this.context){const C=globalThis.AudioContext||globalThis.webkitAudioContext;if(!C)return;const c=this.context=new C();this.master=c.createGain();this.master.gain.value=0;this.master.connect(c.destination);this.motor=c.createOscillator();this.motor.type='sawtooth';this.motorGain=c.createGain();this.motorFilter=c.createBiquadFilter();this.motorFilter.type='lowpass';this.motorFilter.frequency.value=150;this.motor.connect(this.motorFilter).connect(this.motorGain).connect(this.master);this.motor.start();const n=c.createBuffer(1,c.sampleRate*2,c.sampleRate),a=n.getChannelData(0);let last=0;for(let i=0;i<a.length;i++){last=(last+Math.random()*.18-.09)*.985;a[i]=last;}this.noise=c.createBufferSource();this.noise.buffer=n;this.noise.loop=true;this.railFilter=c.createBiquadFilter();this.railFilter.type='bandpass';this.railFilter.frequency.value=650;this.railFilter.Q.value=.6;this.railGain=c.createGain();this.noise.connect(this.railFilter).connect(this.railGain).connect(this.master);this.noise.start();this.hornGain=c.createGain();this.hornGain.gain.value=0;this.hornGain.connect(this.master);this.horns=[185,233,277].map(f=>{const o=c.createOscillator();o.type='triangle';o.frequency.value=f;o.connect(this.hornGain);o.start();return o;});}await this.context.resume();this.enabled=true;this.master.gain.setTargetAtTime(this.volume,this.context.currentTime,.1);}
+ constructor(){this.enabled=false;this.context=null;this.volume=.36;this.horning=false;this.ambience=true;this.lastJoint=0;this.lastChirp=-100;this.nodes=[];}
+ async enable(){
+  if(!this.context){
+   const C=globalThis.AudioContext||globalThis.webkitAudioContext;if(!C)return;
+   const c=this.context=new C(),own=n=>{this.nodes.push(n);return n;};
+   this.master=own(c.createGain());this.master.gain.value=0;this.compressor=own(c.createDynamicsCompressor());
+   this.compressor.threshold.value=-12;this.compressor.knee.value=18;this.compressor.ratio.value=5;this.master.connect(this.compressor).connect(c.destination);
+   const oscillator=(type,f)=>{const o=own(c.createOscillator()),g=own(c.createGain());g.gain.value=0;o.type=type;o.frequency.value=f;o.connect(g).connect(this.master);o.start();return {o,g};};
+   const n=c.createBuffer(1,c.sampleRate*3,c.sampleRate),a=n.getChannelData(0),random=rng(47391);let low=0;
+   for(let i=0;i<a.length;i++){low=(low+(random()*2-1)*.12)*.985;a[i]=low;}
+   this.noise=own(c.createBufferSource());this.noise.buffer=n;this.noise.loop=true;this.noise.start();
+   const noise=(type,f,q=.6)=>{const filter=own(c.createBiquadFilter()),gain=own(c.createGain());filter.type=type;filter.frequency.value=f;filter.Q.value=q;gain.gain.value=0;this.noise.connect(filter).connect(gain).connect(this.master);return {filter,gain};};
+   this.engine=oscillator('sawtooth',40);this.harmonic=oscillator('triangle',80);
+   this.rail=noise('bandpass',600);this.wind=noise('lowpass',420);this.rain=noise('highpass',1500);
+   this.brake=noise('bandpass',1800,2.5);this.joint=noise('lowpass',170);
+   this.squeal=oscillator('sine',1900);this.chirp=oscillator('sine',2300);
+   this.horns=[185,233,277].map(f=>oscillator('triangle',f));
+  }
+  await this.context.resume();this.enabled=true;this.master.gain.setTargetAtTime(this.volume,this.context.currentTime,.1);
+ }
  toggle(){if(this.enabled){this.enabled=false;this.master?.gain.setTargetAtTime(0,this.context.currentTime,.05);}else return this.enable();}
- horn(on){this.horning=on;if(this.context)this.hornGain.gain.setTargetAtTime(on?.2:0,this.context.currentTime,.035);}
- update(train,weather,paused){if(!this.context)return;const t=this.context.currentTime,v=Math.abs(train.speed),c=train.controls,steam=train.stock.kind==='steam';this.master.gain.setTargetAtTime(this.enabled&&!paused?this.volume:0,t,.08);this.motor.frequency.setTargetAtTime(steam?40+v*3:35+v*4+c.throttle*25,t,.15);this.motorFilter.frequency.setTargetAtTime(steam?170:170+v*13+c.throttle*150,t,.15);this.motorGain.gain.setTargetAtTime(c.master?(steam?.022+Math.max(0,Math.sin(train.cursor.odometer*2))*.09:.028+c.throttle*.07):0,t,.12);this.railGain.gain.setTargetAtTime(Math.min(.48,v*.009)+(weather==='rain'||weather==='storm'?.10:0),t,.12);this.railFilter.frequency.setTargetAtTime(350+v*21,t,.15);}
+ horn(on){this.horning=on;if(this.context)for(const h of this.horns)h.g.gain.setTargetAtTime(on?.11:0,this.context.currentTime,.035);}
+ update(train,weather,paused,cameraMode='chase',hour=12){
+  if(!this.context)return;
+  const c=this.context,t=c.currentTime,m=audioMix(train,weather,cameraMode,hour),smooth=(p,v,tau=.10)=>p.setTargetAtTime(v,t,tau);
+  smooth(this.master.gain,this.enabled&&!paused?this.volume:0,.08);
+  smooth(this.engine.o.frequency,m.pitch);smooth(this.harmonic.o.frequency,m.pitch*2.01);
+  smooth(this.engine.g.gain,m.motor*(m.cab?.70:1));smooth(this.harmonic.g.gain,m.motor*.23);
+  smooth(this.rail.gain.gain,m.rail);smooth(this.rail.filter.frequency,400+Math.abs(train.speed)*18);
+  smooth(this.wind.gain.gain,m.wind);smooth(this.rain.gain.gain,this.ambience?m.rain:0);
+  smooth(this.brake.gain.gain,m.brake);smooth(this.squeal.g.gain,m.squeal);
+  smooth(this.squeal.o.frequency,1750+Math.sin(train.cursor.odometer*.08)*130);
+  if(paused||!this.enabled)return;
+  const joint=Math.floor(Math.abs(train.cursor.odometer)/(m.steam?2.0:18));
+  if(joint!==this.lastJoint){this.lastJoint=joint;const p=this.joint.gain.gain;p.cancelScheduledValues(t);p.setValueAtTime(Math.min(.21,.03+Math.abs(train.speed)*.003),t);p.exponentialRampToValueAtTime(.0001,t+.10);}
+  if(this.ambience&&t-this.lastChirp>4.7&&m.ambient>.008){
+   this.lastChirp=t;const p=this.chirp.g.gain,f=this.chirp.o.frequency;p.cancelScheduledValues(t);f.cancelScheduledValues(t);
+   p.setValueAtTime(.0001,t);p.exponentialRampToValueAtTime(m.ambient,t+.05);p.exponentialRampToValueAtTime(.0001,t+.5);
+   f.setValueAtTime(2100,t);f.exponentialRampToValueAtTime(3300,t+.15);f.exponentialRampToValueAtTime(2400,t+.44);
+  }
+ }
  stop(){this.horn(false);if(this.context)this.master.gain.setTargetAtTime(0,this.context.currentTime,.01);}
+ async dispose(){this.stop();for(const n of this.nodes){try{n.stop?.();n.disconnect();}catch{}}this.nodes=[];await this.context?.close();this.context=null;this.enabled=false;}
 }
 
-return {RailAudio};
+return {audioMix,RailAudio};
 })();
 // ---- src/generation-ui.js ----
 const __m_src_generation_ui_js = (() => {
@@ -1568,9 +2249,13 @@ return {expeditionPanel};
 })();
 // ---- src/persistence.js ----
 const __m_src_persistence_js = (() => {
+const {postOptions} = __m_src_postprocess_js;
+const {cleanJourney} = __m_src_journey_js;
 const {generationOptions} = __m_src_generation_js;
 const {WORLDS,STOCK,WEATHER,SCENARIOS} = __m_src_data_js;
 const {clamp} = __m_src_math_js;
+
+
 
 
 
@@ -1581,18 +2266,20 @@ function finite(n,a,b,fallback=0){return Number.isFinite(n)?clamp(n,a,b):fallbac
 function array(v,max){if(v==null)return [];if(!Array.isArray(v)||v.length>max)throw new Error('Project contains too many items or an invalid list.');return v;}
 function validateProject(value){if(!value||typeof value!=='object'||value.format!=='railbound-adventures'||value.version!==2)throw new Error('Not a supported Railbound Adventures v2 project.');const world=WORLDS.find(w=>w.id===value.world);if(!world)throw new Error('Unknown world.');if(!value.player||!STOCK.some(s=>s.id===value.player.stock))throw new Error('Invalid player train.');const editor=value.editor||{};const clean={generationVersion:editor.generationVersion===3?3:2,generation:generationOptions(editor.generation),seed:finite(editor.seed,1,2147483647,world.seed),electrified:editor.electrified!==false,objects:array(editor.objects,1500).map(o=>({type:['tree','building','rock'].includes(o.type)?o.type:'tree',x:finite(o.x,-12000,12000),z:finite(o.z,-12000,12000),size:finite(o.size,3,60,18),rotation:finite(o.rotation,-Math.PI*2,Math.PI*2)})),heightEdits:array(editor.heightEdits,250).map(o=>({x:finite(o.x,-12000,12000),z:finite(o.z,-12000,12000),radius:finite(o.radius,10,600,90),delta:finite(o.delta,-200,200,0)})),stations:array(editor.stations,50).map(o=>({edge:['approach','main','branch','return'].includes(o.edge)?o.edge:'approach',s:finite(o.s,0,100000),name:String(o.name||'New station').slice(0,64)})),customTrack:null};
  if(editor.customTrack!=null){clean.customTrack=array(editor.customTrack,150).map(o=>({x:finite(o.x,-6000,6000),y:finite(o.y,0,900,world.railY),z:finite(o.z,-6000,6000)}));const routeLength=clean.customTrack.reduce((sum,p,i)=>{const q=clean.customTrack[(i+1)%clean.customTrack.length];return sum+Math.hypot(p.x-q.x,p.y-q.y,p.z-q.z);},0);if(routeLength>75000)throw new Error('Custom routes are limited to 75 km of control-point length.');if(clean.customTrack.length<4)throw new Error('Custom track requires at least four control points.');for(let i=0;i<clean.customTrack.length;i++){const a=clean.customTrack[i],b=clean.customTrack[(i+1)%clean.customTrack.length];if(Math.hypot(a.x-b.x,a.z-b.z)<25)throw new Error('Adjacent track nodes must be at least 25 metres apart.');}}
- const env=value.env||{};const settings=value.settings||{};const result={...value,world:world.id,editor:clean,ai:array(value.ai,5),env:{hour:finite(env.hour,0,23.999,world.hour),weather:Object.hasOwn(WEATHER,env.weather)?env.weather:'clear',timeRate:finite(env.timeRate,0,240,4),exposure:finite(env.exposure,.5,1.8,1),electrified:clean.electrified},settings:{quality:['low','medium','high','ultra'].includes(settings.quality)?settings.quality:'high',resolution:finite(settings.resolution,.5,1,1),shadows:settings.shadows!==false,adaptive:settings.adaptive!==false,safety:settings.safety!==false,units:settings.units==='mph'?'mph':'km/h',volume:finite(settings.volume,0,1,.36),timeScale:finite(settings.timeScale,.25,4,1),gamepad:settings.gamepad!==false},simTime:finite(value.simTime,0,1e10,0),paused:!!value.paused,dispatch:{autopilot:!!value.dispatch?.autopilot,holds:array(value.dispatch?.holds,500).filter(s=>typeof s==='string'&&/^(approach|main|branch|return):[0-9]{1,5}$/.test(s))},cameraState:typeof value.cameraState==='object'&&value.cameraState?value.cameraState:{},scenario:SCENARIOS.some(s=>s.id===value.scenario)?value.scenario:'free'};return result;}
-function encodeProject(app){return {format:'railbound-adventures',version:2,savedAt:new Date().toISOString(),world:app.world.def.id,editor:structuredClone(app.world.editor),env:{...app.env},settings:{...app.settings},scenario:app.mission.mode,mission:{score:app.mission.score,stops:app.mission.stops,boarded:app.mission.boarded,lastId:app.mission.lastId,complete:app.mission.complete,targetId:app.mission.target?.id||null,dwell:app.mission.dwell,penaltyClock:app.mission.penaltyClock,message:app.mission.message,stopLog:app.mission.stopLog},player:app.player.snapshot(),ai:app.trains.filter(t=>t!==app.player).map(t=>t.snapshot()),switchBranch:app.world.network.switchBranch,camera:app.camera.mode,cameraState:{distance:app.camera.distance,azimuth:app.camera.azimuth,elevation:app.camera.elevation,cabYaw:app.camera.cabYaw,cabPitch:app.camera.cabPitch,fov:app.camera.fov},simTime:app.simTime||0,paused:!!app.paused,dispatch:{holds:[...(app.world.traffic?.holds||[])],autopilot:!!app.autopilot}};}
+ const env=value.env||{};const settings=value.settings||{};const result={...value,world:world.id,editor:clean,ai:array(value.ai,5),env:{hour:finite(env.hour,0,23.999,world.hour),weather:Object.hasOwn(WEATHER,env.weather)?env.weather:'clear',timeRate:finite(env.timeRate,0,240,4),exposure:finite(env.exposure,.5,1.8,1),electrified:clean.electrified},journey:cleanJourney(value.journey),settings:{cinematic:postOptions(settings.cinematic),wildlife:settings.wildlife!==false,ambience:settings.ambience!==false,coach:settings.coach!==false,cameraMotion:settings.cameraMotion!==false,quality:['low','medium','high','ultra'].includes(settings.quality)?settings.quality:'high',resolution:finite(settings.resolution,.5,1,1),shadows:settings.shadows!==false,adaptive:settings.adaptive!==false,safety:settings.safety!==false,units:settings.units==='mph'?'mph':'km/h',volume:finite(settings.volume,0,1,.36),timeScale:finite(settings.timeScale,.25,4,1),gamepad:settings.gamepad!==false},simTime:finite(value.simTime,0,1e10,0),paused:!!value.paused,dispatch:{autopilot:!!value.dispatch?.autopilot,holds:array(value.dispatch?.holds,500).filter(s=>typeof s==='string'&&/^(approach|main|branch|return):[0-9]{1,5}$/.test(s))},cameraState:typeof value.cameraState==='object'&&value.cameraState?value.cameraState:{},scenario:SCENARIOS.some(s=>s.id===value.scenario)?value.scenario:'free'};return result;}
+function encodeProject(app){return {format:'railbound-adventures',version:2,savedAt:new Date().toISOString(),world:app.world.def.id,editor:structuredClone(app.world.editor),env:{...app.env},settings:{...app.settings},journey:cleanJourney(app.journey?.stats),scenario:app.mission.mode,mission:{score:app.mission.score,stops:app.mission.stops,boarded:app.mission.boarded,lastId:app.mission.lastId,complete:app.mission.complete,targetId:app.mission.target?.id||null,dwell:app.mission.dwell,penaltyClock:app.mission.penaltyClock,message:app.mission.message,stopLog:app.mission.stopLog},player:app.player.snapshot(),ai:app.trains.filter(t=>t!==app.player).map(t=>t.snapshot()),switchBranch:app.world.network.switchBranch,camera:app.camera.mode,cameraState:{distance:app.camera.distance,azimuth:app.camera.azimuth,elevation:app.camera.elevation,cabYaw:app.camera.cabYaw,cabPitch:app.camera.cabPitch,fov:app.camera.fov},simTime:app.simTime||0,paused:!!app.paused,dispatch:{holds:[...(app.world.traffic?.holds||[])],autopilot:!!app.autopilot}};}
 
 return {SAVE_KEY,storageGet,storageSet,validateProject,encodeProject};
 })();
 // ---- src/ui.js ----
 const __m_src_ui_js = (() => {
+const {cinematicPanel,journeyPanel,updateCinematicUI} = __m_src_cinematic_ui_js;
 const {expeditionPanel} = __m_src_generation_ui_js;
 const {WORLDS,STOCK,WEATHER,SCENARIOS} = __m_src_data_js;
 const {clamp,hex,lerp,downloadFile} = __m_src_math_js;
 const {CAMERA_MODES} = __m_src_camera_js;
 const {storageGet,SAVE_KEY} = __m_src_persistence_js;
+
 
 
 
@@ -1632,11 +2319,13 @@ class UI {
   let here=null;for(const s of a.world.stations)if(s.edge===pose.edge&&Math.abs(s.s-pose.s)<190)here=s;$('current-station').textContent=here?.name||a.world.def.name;$('journey-description').textContent=a.mission.mode==='free'?(Math.abs(t.speed)<.25?'A little further from the everyday.':`${a.world.def.tag} · ${pose.edge==='branch'?'Scenic branch':'Main line'}`):a.mission.message;
   $('mission-mode').textContent=(SCENARIOS.find(s=>s.id===a.mission.mode)?.name||'FREE ROAM').toUpperCase();$('depart').classList.toggle('hidden',Math.abs(t.speed)>.5||a.mission.complete);$('journey-hint').textContent=a.mission.mode==='free'?(Math.abs(t.speed)>.5?`${t.cars+1} vehicles · ${Math.round(t.length)} m · Explore without a timetable`:'Release the brake. Find your rhythm.'):`${a.mission.stops} / 3 stops · ${Math.round(a.mission.score)} points`;
   const warning=t.derailed?`${t.failureReason||'Train disabled'} — reposition on clear track if needed, then recover in Setup.`:c.emergency?'EMERGENCY BRAKE · Stop, then tap Reset emergency.':t.protection?'TRAIN PROTECTION · Automatic braking for speed or signal.':t.wheelslip>.05?'WHEEL SLIP · Reduce power or apply sand (X).':null;$('safety-banner').classList.toggle('hidden',!warning);if(warning)$('safety-banner').textContent=warning;
-  this.drawMap($('minimap'),false);if(['map','dispatch','editor'].includes(this.activePanel))this.drawMap($('large-map'),true);if(this.activePanel==='systems')this.updateSystemValues();
+  updateCinematicUI(a);this.drawMap($('minimap'),false);if(['map','dispatch','editor'].includes(this.activePanel))this.drawMap($('large-map'),true);if(this.activePanel==='systems')this.updateSystemValues();
  }
- openPanel(name){this.activePanel=name;this.dialog.dataset.panel=name;this.app.panelPause=true;const titles={worlds:['THE RAILWAY IS YOURS','Find your next horizon'],fleet:['YOUR ROLLING STOCK','Choose your train'],map:['THE ENTIRE RAILWAY','Route map'],environment:['A WORLD IN YOUR HANDS','Weather & time'],dispatch:['RAILWAY OPERATIONS','Dispatcher'],editor:['SHAPE THE JOURNEY','World editor'],settings:['MAKE IT YOURS','Simulation & saves'],systems:['ENGINEERING DESK','Train systems'],missions:['A PURPOSE FOR THE JOURNEY','Services & scenarios'],help:['WELCOME ABOARD','Driving guide']};const [over,title]=titles[name]||titles.settings;$('panel-overline').textContent=over;$('panel-title').textContent=title;this.renderPanel(name);if(!this.dialog.open)this.dialog.showModal();}
+ openPanel(name){this.activePanel=name;this.dialog.dataset.panel=name;this.app.panelPause=true;const titles={cinematic:['THE ART OF THE JOURNEY','Display & immersion'],journey:['DRIVING WITH PURPOSE','Your journey'],worlds:['THE RAILWAY IS YOURS','Find your next horizon'],fleet:['YOUR ROLLING STOCK','Choose your train'],map:['THE ENTIRE RAILWAY','Route map'],environment:['A WORLD IN YOUR HANDS','Weather & time'],dispatch:['RAILWAY OPERATIONS','Dispatcher'],editor:['SHAPE THE JOURNEY','World editor'],settings:['MAKE IT YOURS','Simulation & saves'],systems:['ENGINEERING DESK','Train systems'],missions:['A PURPOSE FOR THE JOURNEY','Services & scenarios'],help:['WELCOME ABOARD','Driving guide']};const [over,title]=titles[name]||titles.settings;$('panel-overline').textContent=over;$('panel-title').textContent=title;this.renderPanel(name);if(!this.dialog.open)this.dialog.showModal();}
  closePanel(){this.dialog.close();this.activePanel=null;this.app.panelPause=false;}
- renderPanel(name){const methods={worlds:'worldsPanel',fleet:'fleetPanel',map:'mapPanel',environment:'environmentPanel',dispatch:'dispatchPanel',editor:'editorPanel',settings:'settingsPanel',systems:'systemsPanel',missions:'missionsPanel',help:'helpPanel'};this[methods[name]||'settingsPanel']();}
+ renderPanel(name){const methods={cinematic:'cinematicPanel',journey:'journeyPanel',worlds:'worldsPanel',fleet:'fleetPanel',map:'mapPanel',environment:'environmentPanel',dispatch:'dispatchPanel',editor:'editorPanel',settings:'settingsPanel',systems:'systemsPanel',missions:'missionsPanel',help:'helpPanel'};this[methods[name]||'settingsPanel']();}
+ cinematicPanel(){cinematicPanel(this);}
+ journeyPanel(){journeyPanel(this);}
  worldsPanel(){expeditionPanel(this);}
  fleetArt(s){const color=s.color,stripe=s.stripe,steam=s.kind==='steam';return `<svg viewBox="0 0 230 62" aria-hidden="true"><path d="M8 52h213" stroke="#a8ba9a" opacity=".4"/>${steam?`<rect x="39" y="17" width="107" height="25" rx="12" fill="${color}"/><rect x="136" y="10" width="32" height="36" fill="${color}"/><path d="M130 10h44"/><rect x="45" y="5" width="8" height="17" fill="#263b31"/><rect x="178" y="27" width="42" height="21" fill="${color}"/><path d="M44 40h171" stroke="${stripe}"/>`:`<path d="M18 43V21q0-8 9-8h153l29 17v13z" fill="${color}" stroke="#91a18a"/><path d="M18 35h190v6H18z" fill="${stripe}" stroke="none"/><path d="M28 19h119v11H28z" fill="#354e4b" stroke="none"/><path d="M156 18h20l18 12h-38z" fill="#354e4b" stroke="none"/><path d="M28 19v11m17-11v11m17-11v11m17-11v11m17-11v11m17-11v11m17-11v11" stroke="${color}" stroke-width="3"/>${['electric','highspeed','metro'].includes(s.kind)?'<path d="m79 11 17-7-14-3h19" stroke="#9cae91"/>':''}`}<g fill="#1b2a23" stroke="#92a18b">${[42,58,151,169,194,209].slice(0,steam?6:4).map(x=>`<circle cx="${x}" cy="45" r="5.5"/>`).join('')}</g></svg>`;}
  fleetPanel(){const a=this.app;$('panel-content').innerHTML=`<p class="panel-intro">Six original locomotives and trainsets, each with its own power, weight, traction and handling. Stop the train before changing rolling stock.</p><div class="fleet-grid">${STOCK.map(s=>`<div class="fleet-card ${a.player.stock.id===s.id?'selected':''}"><div class="fleet-art">${this.fleetArt(s)}</div><h3>${s.name}</h3><span class="family">${s.family}</span><div class="spec-grid"><div><span>POWER</span><b>${(s.power/1e6).toFixed(1)} MW</b></div><div><span>TOP SPEED</span><b>${s.maxSpeed} km/h</b></div><div><span>LOCOMOTIVE</span><b>${s.mass/1000} t</b></div><div><span>TRACTIVE EFFORT</span><b>${s.tractive/1000} kN</b></div></div><button class="secondary ${a.player.stock.id===s.id?'selected':''}" data-stock="${s.id}">${a.player.stock.id===s.id?'Currently driving':'Take the controls'} ${icon('arrow','icon small')}</button></div>`).join('')}</div><div class="panel-notice">Consist length and load affect acceleration, brake propagation and stopping distance. Configure wagons and advanced controls in Train systems.</div>`;document.querySelectorAll('[data-stock]').forEach(b=>b.onclick=()=>this.guard(()=>{a.player.setStock(STOCK.find(s=>s.id===b.dataset.stock));a.camera.initial=true;this.closePanel();this.toast(`${a.player.stock.name} ready. ${a.player.cars+1} vehicles coupled.`);}));}
@@ -1649,7 +2338,7 @@ class UI {
  mapPanel(){const a=this.app;$('panel-content').innerHTML=`<p class="panel-intro">A live view of the complete railway. Stations, your train, AI services and both junction routes share the same physical network.</p><div class="map-layout"><div class="large-map-wrap"><canvas id="large-map" class="large-map"></canvas><div class="map-legend"><span style="color:#e6bb79">● Your train</span><span style="color:#92c3c2">● AI services</span><span>○ Station</span><span>— Main line</span><span>╌ Scenic branch</span></div></div><aside><span class="overline">STATIONS</span><div class="station-list">${a.world.stations.map(s=>`<button data-station="${s.id}">${escapeHTML(s.name)}<span>${icon('arrow','icon small')}</span></button>`).join('')}</div><p class="map-note">Select a station to relocate your train while stopped. Teleporting resets the current service.</p><button class="secondary" id="map-switch">${a.world.network.switchBranch?'Scenic branch selected':'Main line selected'}</button><p class="map-note">A turnout is locked while a train occupies its approach or fouling zone.</p></aside></div>`;document.querySelectorAll('[data-station]').forEach(b=>b.onclick=()=>this.guard(()=>{const st=a.world.stations.find(s=>s.id===b.dataset.station);a.teleport(st.edge,st.s);this.toast(`Positioned at ${st.name}.`);}));$('map-switch').onclick=()=>this.guard(()=>{a.toggleSwitch();$('map-switch').textContent=a.world.network.switchBranch?'Scenic branch selected':'Main line selected';});this.bindMap(false);this.drawMap($('large-map'),true);}
  dispatchPanel(){const a=this.app;$('panel-content').innerHTML=`<div class="panel-two-column"><section><div class="panel-section"><h3>Junction control</h3><p class="map-note">Set the next diverging route. The full consist retains its chosen route until it clears the junction.</p><div class="button-row"><button id="dispatch-switch" class="primary">${a.world.network.switchBranch?'Scenic branch':'Main line'} selected</button><button id="hold-signal" class="secondary">Hold next block</button><button id="clear-signals" class="secondary">Release holds</button></div><p id="signal-holds" class="map-note">${a.world.traffic.holds.size} manually held blocks · ${a.world.traffic.occupied.size} occupied blocks</p></div><div class="large-map-wrap"><canvas id="large-map" class="large-map" style="height:240px"></canvas></div></section><section><span class="section-label">Active trains</span>${a.trains.map(t=>`<div class="dispatch-train"><div><b>${t===a.player?'● ':''}${t.stock.name}</b><small>${t.id==='player'?'You':t.id} · ${(Math.abs(t.speed)*3.6).toFixed(0)} km/h · ${t.cars+1} vehicles</small></div>${t!==a.player?`<button class="secondary" data-takeover="${t.id}">Drive</button><button class="bare" data-remove="${t.id}" title="Remove train">×</button>`:'<span class="overline">DRIVING</span>'}</div>`).join('')}<div class="button-row"><button id="add-ai" class="secondary">+ Add AI service</button><button id="auto-drive" class="secondary ${a.autopilot?'active':''}">${a.autopilot?'Disable':'Enable'} autopilot</button></div><div class="panel-notice">AI observes block occupancy, curves and station stops. This is a simplified one-way block system, not a complete railway interlocking implementation.</div></section></div>`;$('dispatch-switch').onclick=()=>this.guard(()=>{a.toggleSwitch();this.dispatchPanel();});$('hold-signal').onclick=()=>{a.world.traffic.holds.add(a.world.traffic.block(a.player.cursor.pose(480)));this.dispatchPanel();this.toast('Next approach block held at danger.');};$('clear-signals').onclick=()=>{a.world.traffic.holds.clear();this.dispatchPanel();};$('add-ai').onclick=()=>this.guard(()=>{a.addAI();this.dispatchPanel();});$('auto-drive').onclick=()=>{a.autopilot=!a.autopilot;this.dispatchPanel();};document.querySelectorAll('[data-takeover]').forEach(b=>b.onclick=()=>{a.takeOver(b.dataset.takeover);this.closePanel();this.toast('You have control of this service.');});document.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{a.removeAI(b.dataset.remove);this.dispatchPanel();});this.drawMap($('large-map'),true);}
  missionsPanel(){const a=this.app;$('panel-content').innerHTML=`<p class="panel-intro">Choose a purpose for your run. Passenger services reward precise stops and smooth driving. Free roam leaves every tool open.</p>${SCENARIOS.map(s=>`<div class="mission-card"><div class="mission-icon">${icon('flag')}</div><div><h3>${s.name}</h3><p>${s.description}</p></div><button class="secondary ${a.mission.mode===s.id?'selected':''}" data-mission="${s.id}">${a.mission.mode===s.id?'Restart':'Start'} service</button></div>`).join('')}<div class="panel-section"><h3>Current service</h3><p>${escapeHTML(a.mission.message)}</p><div class="spec-grid"><div><span>SCORE</span><b>${Math.round(a.mission.score)}</b></div><div><span>STATIONS SERVED</span><b>${a.mission.stops}</b></div><div><span>PASSENGERS BOARDED</span><b>${a.mission.boarded}</b></div><div><span>STATUS</span><b>${a.mission.complete?'Complete':a.mission.mode==='free'?'Exploring':'In service'}</b></div></div>${a.mission.stopLog.map(s=>`<p class="map-note">${escapeHTML(s.station)} · ${escapeHTML(s.result)}</p>`).join('')}</div>`;document.querySelectorAll('[data-mission]').forEach(b=>b.onclick=()=>{a.startMission(b.dataset.mission);this.closePanel();this.toast(a.mission.mode==='free'?'Free roam. The railway is yours.':'Service started. Follow the next station marker.');});}
- settingsPanel(){const a=this.app,s=a.settings;$('panel-content').innerHTML=`<div class="panel-two-column"><section><div class="panel-section"><h3>Graphics</h3><label class="field"><span>Rendering quality</span><select id="set-quality">${['low','medium','high','ultra'].map(q=>`<option value="${q}" ${s.quality===q?'selected':''}>${q[0].toUpperCase()+q.slice(1)}</option>`).join('')}</select></label>${this.field('Render resolution','set-resolution',50,100,5,Math.round(s.resolution*100),'%')}${this.toggle('Directional shadows','set-shadows',s.shadows)}${this.toggle('Adaptive resolution','set-adaptive',s.adaptive,'Reduce resolution when frame time stays high.')}<div class="panel-notice">Active backend: <b>${a.renderer.kind}</b>. WebGPU is preferred; WebGL 2 is the compatibility fallback. No external assets or libraries are downloaded.</div></div><div class="panel-section"><h3>Audio</h3>${this.field('Master volume','set-volume',0,100,1,Math.round(s.volume*100),'%')}<button class="secondary" id="set-audio">${a.audio.enabled?'Mute sound':'Enable sound'}</button></div></section><section><div class="panel-section"><h3>Driving</h3>${this.toggle('Automatic train protection','set-safety',s.safety,'Brakes for excessive speed and occupied blocks.')}${this.toggle('Gamepad input','set-gamepad',s.gamepad)}<label class="field"><span>Speed units</span><select id="set-units"><option value="km/h" ${s.units==='km/h'?'selected':''}>Kilometres per hour</option><option value="mph" ${s.units==='mph'?'selected':''}>Miles per hour</option></select></label>${this.field('Simulation speed','set-time',.25,4,.25,s.timeScale,'×')}<div class="button-row"><button id="recover" class="secondary danger-button">Recover stopped train</button><button id="hide-hud" class="secondary">Hide controls</button></div></div><div class="panel-section"><h3>Keep your railway</h3><div class="button-row"><button id="save-project" class="primary">${icon('save','icon small')} Export project</button><button id="open-project" class="secondary">Open project</button><button id="restore-save" class="secondary" ${storageGet(SAVE_KEY)?'':'disabled'}>Restore autosave</button></div><p class="map-note">Autosaves are local to this browser. Export a JSON project to transfer your world, trains, weather and progress to another device.</p><button id="save-now" class="secondary">Save in this browser</button></div></section></div>`;$('set-quality').onchange=e=>{s.quality=e.target.value;a.applySettings();};this.bindRange('set-resolution',v=>{s.resolution=v/100;a.applySettings();},v=>v+'%');for(const id of ['shadows','adaptive','safety','gamepad'])$('set-'+id).onchange=e=>{s[id]=e.target.checked;a.applySettings();};$('set-units').onchange=e=>s.units=e.target.value;this.bindRange('set-volume',v=>{s.volume=v/100;a.audio.volume=s.volume;},v=>v+'%');this.bindRange('set-time',v=>s.timeScale=v,v=>v+'×');$('set-audio').onclick=()=>this.guard(async()=>{await a.audio.toggle();$('set-audio').textContent=a.audio.enabled?'Mute sound':'Enable sound';});$('recover').onclick=()=>{a.recover();this.toast('Train recovered and brakes secured.');};$('hide-hud').onclick=()=>{this.closePanel();document.body.classList.add('hud-hidden');};$('save-project').onclick=()=>a.exportProject();$('open-project').onclick=()=>$('project-file').click();$('restore-save').onclick=()=>this.guard(async()=>{await a.importProject(JSON.parse(storageGet(SAVE_KEY)));this.closePanel();this.toast('Autosave restored.');});$('save-now').onclick=()=>this.toast(a.autosave()?'Saved in this browser.':'Browser storage is unavailable. Export a project instead.',!a.storageAvailable);}
+ settingsPanel(){const a=this.app,s=a.settings;$('panel-content').innerHTML=`<div class="panel-two-column"><section><div class="panel-section"><h3>Graphics</h3><button class="secondary" id="cinematic-settings">Display, immersion & photo studio</button><label class="field"><span>Rendering quality</span><select id="set-quality">${['low','medium','high','ultra'].map(q=>`<option value="${q}" ${s.quality===q?'selected':''}>${q[0].toUpperCase()+q.slice(1)}</option>`).join('')}</select></label>${this.field('Render resolution','set-resolution',50,100,5,Math.round(s.resolution*100),'%')}${this.toggle('Directional shadows','set-shadows',s.shadows)}${this.toggle('Adaptive resolution','set-adaptive',s.adaptive,'Reduce resolution when frame time stays high.')}<div class="panel-notice">Active backend: <b>${a.renderer.kind}</b>. WebGPU is preferred; WebGL 2 is the compatibility fallback. No external assets or libraries are downloaded.</div></div><div class="panel-section"><h3>Audio</h3>${this.field('Master volume','set-volume',0,100,1,Math.round(s.volume*100),'%')}<button class="secondary" id="set-audio">${a.audio.enabled?'Mute sound':'Enable sound'}</button></div></section><section><div class="panel-section"><h3>Driving</h3>${this.toggle('Automatic train protection','set-safety',s.safety,'Brakes for excessive speed and occupied blocks.')}${this.toggle('Gamepad input','set-gamepad',s.gamepad)}<label class="field"><span>Speed units</span><select id="set-units"><option value="km/h" ${s.units==='km/h'?'selected':''}>Kilometres per hour</option><option value="mph" ${s.units==='mph'?'selected':''}>Miles per hour</option></select></label>${this.field('Simulation speed','set-time',.25,4,.25,s.timeScale,'×')}<div class="button-row"><button id="recover" class="secondary danger-button">Recover stopped train</button><button id="hide-hud" class="secondary">Hide controls</button></div></div><div class="panel-section"><h3>Keep your railway</h3><div class="button-row"><button id="save-project" class="primary">${icon('save','icon small')} Export project</button><button id="open-project" class="secondary">Open project</button><button id="restore-save" class="secondary" ${storageGet(SAVE_KEY)?'':'disabled'}>Restore autosave</button></div><p class="map-note">Autosaves are local to this browser. Export a JSON project to transfer your world, trains, weather and progress to another device.</p><button id="save-now" class="secondary">Save in this browser</button></div></section></div>`;$('cinematic-settings').onclick=()=>this.openPanel('cinematic');$('set-quality').onchange=e=>{s.quality=e.target.value;a.applySettings();};this.bindRange('set-resolution',v=>{s.resolution=v/100;a.applySettings();},v=>v+'%');for(const id of ['shadows','adaptive','safety','gamepad'])$('set-'+id).onchange=e=>{s[id]=e.target.checked;a.applySettings();};$('set-units').onchange=e=>s.units=e.target.value;this.bindRange('set-volume',v=>{s.volume=v/100;a.audio.volume=s.volume;},v=>v+'%');this.bindRange('set-time',v=>s.timeScale=v,v=>v+'×');$('set-audio').onclick=()=>this.guard(async()=>{await a.audio.toggle();$('set-audio').textContent=a.audio.enabled?'Mute sound':'Enable sound';});$('recover').onclick=()=>{a.recover();this.toast('Train recovered and brakes secured.');};$('hide-hud').onclick=()=>{this.closePanel();document.body.classList.add('hud-hidden');};$('save-project').onclick=()=>a.exportProject();$('open-project').onclick=()=>$('project-file').click();$('restore-save').onclick=()=>this.guard(async()=>{await a.importProject(JSON.parse(storageGet(SAVE_KEY)));this.closePanel();this.toast('Autosave restored.');});$('save-now').onclick=()=>this.toast(a.autosave()?'Saved in this browser.':'Browser storage is unavailable. Export a project instead.',!a.storageAvailable);}
  editorPanel(){const a=this.app;if(!this.draft||this.editorWorld!==a.world){this.draft=structuredClone(a.world.editor);this.editorWorld=a.world;this.editorUndo=[];this.editorRedo=[];this.newTrack=[];this.editorTool='inspect';}$('panel-content').innerHTML=`<p class="panel-intro">Place scenery, shape terrain, add stations, or draw your own closed railway. Edits are staged until you apply them. Applying changes pauses and safely repositions the train.</p><div class="editor-toolbar">${Object.keys(toolTip).map(id=>`<button class="secondary ${this.editorTool===id?'active':''}" data-tool="${id}">${{inspect:'Inspect',teleport:'Position train',tree:'Tree',building:'House',rock:'Rock',raise:'Raise',lower:'Lower',station:'Station',track:'Draw track',erase:'Erase'}[id]}</button>`).join('')}</div><div class="map-layout"><div class="large-map-wrap"><canvas id="large-map" class="large-map"></canvas><div class="map-legend" id="editor-tool-hint">${toolTip[this.editorTool]}</div></div><aside><label class="field"><span>World seed</span><input id="edit-seed" type="number" min="1" max="2147483647" value="${this.draft.seed}"></label>${this.field('Terrain brush radius','edit-radius',20,350,10,this.brushRadius||90,' m')}${this.field('Track node elevation','edit-elevation',5,500,1,this.nodeElevation||a.world.def.railY,' m')}${this.toggle('Overhead electrification','edit-wires',this.draft.electrified)}<button id="build-track" class="secondary">Build custom track (${this.newTrack.length} nodes)</button><p class="map-note">Each new node uses the selected elevation. Keep grades gentle and curves broad. Add four or more nodes at least 25 m apart.</p><button id="reset-track" class="secondary danger-button">Restore original railway</button></aside></div><div class="editor-footer"><button id="edit-undo" class="secondary" ${this.editorUndo.length?'':'disabled'}>Undo</button><button id="edit-redo" class="secondary" ${this.editorRedo.length?'':'disabled'}>Redo</button><button id="mobile-build-track" class="secondary">Build track (${this.newTrack.length})</button><span class="editor-status">${this.draft.objects.length} objects · ${this.draft.heightEdits.length} terrain edits · ${this.draft.stations.length} new stations</span><button id="edit-apply" class="primary">Apply world changes ${icon('arrow','icon small')}</button></div>`;
   document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{this.editorTool=b.dataset.tool;this.editorPanel();});this.bindRange('edit-radius',v=>this.brushRadius=v,v=>v+' m');this.bindRange('edit-elevation',v=>this.nodeElevation=v,v=>v+' m');$('edit-wires').onchange=e=>{this.editorCheckpoint();this.draft.electrified=e.target.checked;};$('edit-seed').onchange=e=>{this.editorCheckpoint();this.draft.seed=clamp(Number(e.target.value)||a.world.def.seed,1,2147483647);};const build=()=>this.guard(()=>{if(this.newTrack.length<4)throw new Error('Place at least four track nodes.');for(let i=0;i<this.newTrack.length;i++){const p=this.newTrack[i],q=this.newTrack[(i+1)%this.newTrack.length];if(Math.hypot(p.x-q.x,p.z-q.z)<25)throw new Error('Track nodes must be at least 25 m apart.');}this.editorCheckpoint();this.draft.customTrack=structuredClone(this.newTrack);this.draft.stations=[];this.newTrack=[];this.editorTool='inspect';this.editorPanel();this.toast('Custom route staged. Apply world changes to construct it.');});$('build-track').onclick=build;$('mobile-build-track').onclick=build;$('reset-track').onclick=()=>{this.editorCheckpoint();this.draft.customTrack=null;this.draft.stations=[];this.newTrack=[];this.editorPanel();};$('edit-undo').onclick=()=>{this.editorRedo.push(structuredClone(this.draft));this.draft=this.editorUndo.pop();this.editorPanel();};$('edit-redo').onclick=()=>{this.editorUndo.push(structuredClone(this.draft));this.draft=this.editorRedo.pop();this.editorPanel();};$('edit-apply').onclick=()=>this.guard(async()=>{const draft=structuredClone(this.draft);this.closePanel();await a.rebuildWorld(draft);this.draft=null;this.toast('Your world is ready.');});this.bindMap(true);this.drawMap($('large-map'),true);
  }
@@ -1671,6 +2360,10 @@ return {icon,UI};
 })();
 // ---- src/main.js ----
 const __m_src_main_js = (() => {
+const {postOptions} = __m_src_postprocess_js;
+const {JourneyDirector} = __m_src_journey_js;
+const {WorldLife} = __m_src_world_life_js;
+const {installCinematicUI,togglePhotoMode} = __m_src_cinematic_ui_js;
 const {WORLDS,STOCK,WEATHER} = __m_src_data_js;
 const {clamp,mod,downloadFile} = __m_src_math_js;
 const {Renderer} = __m_src_renderer_js;
@@ -1696,13 +2389,17 @@ const {SAVE_KEY,storageGet,storageSet,validateProject,encodeProject} = __m_src_p
 
 
 
+
+
+
+
 /** Owns the simulation lifecycle. Physics uses bounded, fixed 1/60-second steps. */
 class RailboundApp {
  constructor(){
   const mobile=matchMedia('(max-width: 760px)').matches;
-  this.settings={quality:mobile?'medium':'high',resolution:mobile?.8:1,shadows:true,adaptive:true,safety:true,units:'km/h',volume:.36,timeScale:1,gamepad:true};
+  this.settings={quality:mobile?'medium':'high',resolution:mobile?.8:1,shadows:true,adaptive:true,safety:true,units:'km/h',volume:.36,timeScale:1,gamepad:true,cinematic:postOptions(),wildlife:true,ambience:true,coach:true,cameraMotion:!matchMedia('(prefers-reduced-motion: reduce)').matches};
   this.env={hour:16.4,weather:'clear',timeRate:4,exposure:1,electrified:true};
-  this.camera=new CameraRig();this.audio=new RailAudio();this.rolling=new RollingStockRenderer();this.ui=new UI(this);
+  this.journey=new JourneyDirector();this.life=new WorldLife();this.camera=new CameraRig();this.audio=new RailAudio();this.rolling=new RollingStockRenderer();this.ui=new UI(this);
   this.renderer=new Renderer(document.getElementById('viewport'),message=>this.ui.toast(message,true));
   this.trains=[];this.player=null;this.world=null;this.mission=new Mission();this.keys=new Set();this.ready=false;this.renderEnabled=true;this.loadingWorld=false;this.paused=false;this.panelPause=false;this.autopilot=false;this.hidden=document.hidden;
   this.accumulator=0;this.simTime=0;this.uiClock=0;this.fps=0;this.fpsFrames=0;this.fpsClock=0;this.lastFrame=0;this.currentLimit=120;this.saveClock=0;this.adaptClock=0;this.gamepadButtons=[];this.userActive=false;this.lastSave=null;
@@ -1710,7 +2407,7 @@ class RailboundApp {
   this.frame=this.frame.bind(this);
  }
  async initialize(){
-  await this.renderer.initialize();this.applySettings();this.bindInput();
+  await this.renderer.initialize();this.applySettings();this.bindInput();installCinematicUI(this);
   await this.loadWorld('alpine');this.ready=true;requestAnimationFrame(this.frame);
   if(this.existingSave)this.ui.toast('A previous journey is saved. Open Setup → Restore saved journey to continue.');
   if(this.renderer.lastError)this.ui.toast('WebGPU was unavailable. The WebGL 2 renderer is active.');
@@ -1736,7 +2433,7 @@ class RailboundApp {
    }
    await next.build((label,progress)=>this.ui.loading(label,progress));
    const previous=this.world;
-   this.world=next;this.player=player;this.trains=trains;
+   this.world=next;this.player=player;this.trains=trains;this.life.reset(next);this.journey.reset(restored?.journey);
    this.env=restored?{...restored.env}:{...this.env,hour:def.hour,weather:def.id==='nordic'?'snow':'clear'};
    this.env.electrified=next.editor.electrified;next.weather=this.env.weather;
    if(restored)this.settings={...this.settings,...restored.settings};
@@ -1757,7 +2454,7 @@ class RailboundApp {
   project.player.cursor=new RailCursor(candidate.network,near.edge,near.s).snapshot();project.player.speed=0;project.player.controls.throttle=0;project.player.controls.brake=.7;project.player.derailed=false;project.ai=[];project.mission={score:1000,stops:0,boarded:0};
   await this.loadWorld(project.world,editor,validateProject(project));this.userActive=true;
  }
- applySettings(){Object.assign(this.renderer.settings,{quality:this.settings.quality,resolution:this.settings.resolution,shadows:this.settings.shadows});this.audio.volume=this.settings.volume;this.adaptClock=0;}
+ applySettings(){Object.assign(this.renderer.settings,{quality:this.settings.quality,resolution:this.settings.resolution,shadows:this.settings.shadows});this.audio.volume=this.settings.volume;this.settings.cinematic=postOptions(this.settings.cinematic);this.renderer.post.options=this.settings.cinematic;this.audio.ambience=this.settings.ambience!==false;this.camera.motion=this.settings.cameraMotion!==false;this.adaptClock=0;}
  getSpeedLimit(train){const p=train.cursor.pose(),edge=this.world.network.edges.get(p.edge);return Math.min(train.stock.maxSpeed,edge.speedLimit(p.s));}
  togglePause(value){this.paused=typeof value==='boolean'?value:!this.paused;this.accumulator=0;this.keys.clear();this.audio.horn(false);this.ui.update();}
  teleport(edge,s){if(Math.abs(this.player.speed)>.15)throw new Error('Stop the train before repositioning it.');if(!this.world.network.edges.has(edge))throw new Error('Invalid rail section.');const cursor=new RailCursor(this.world.network,edge,clamp(s,0,this.world.network.edges.get(edge).length));const original=this.player.cursor;this.player.cursor=cursor;this.world.traffic.update(this.trains);if(this.world.traffic.contacts().some(pair=>pair.includes(this.player.id))){this.player.cursor=original;this.world.traffic.update(this.trains);throw new Error('That track is occupied.');}this.player.controls.throttle=0;this.player.controls.brake=.7;this.player.speed=0;this.camera.initial=true;this.userActive=true;this.mission.target=null;this.ui.toast('Train positioned.');}
@@ -1777,7 +2474,7 @@ class RailboundApp {
   this.world.traffic.update(this.trains);
   for(const pair of this.world.traffic.contacts()){for(const id of pair){const t=this.trains.find(t=>t.id===id);if(t&&!t.derailed){t.derailed=true;t.failureReason='Train collision';t.speed=0;t.controls.parking=true;t.emergency();t.events.push('Train collision: both services stopped. Reposition the stopped train on clear track, then recover it in Setup.');}}}
   for(const t of this.trains){if(t.ai)this.world.traffic.controlAI(t,dt,this.world.stations,this.env);const limit=this.getSpeedLimit(t),danger=this.world.traffic.dangerDistance(t);t.step(dt,this.env,{safety:t.ai||this.settings.safety,limit,danger});if(t===this.player)this.currentLimit=limit;if(t.events.length){for(const event of t.events.splice(0))this.ui.toast(event,true);}}
-  this.mission.step(dt,this.player,this.world.stations,this.currentLimit);this.env.hour=mod(this.env.hour+dt*this.env.timeRate/3600,24);this.simTime+=dt;
+  this.mission.step(dt,this.player,this.world.stations,this.currentLimit);this.journey.step(dt,this.player,this.world,this.env,this.currentLimit,this.mission);this.env.hour=mod(this.env.hour+dt*this.env.timeRate/3600,24);this.simTime+=dt;
  }
  frame(timestamp){
   requestAnimationFrame(this.frame);if(!this.ready||this.loadingWorld||this.renderer.lost){this.lastFrame=timestamp;return;}
@@ -1785,7 +2482,7 @@ class RailboundApp {
   const stopped=this.paused||this.panelPause||this.hidden;
   if(!stopped){this.pollControls(dt);this.accumulator+=Math.min(.25,elapsed*this.settings.timeScale);let steps=0;while(this.accumulator>=1/60&&steps++<16){this.tick(1/60);this.accumulator-=1/60;}if(steps>=16)this.accumulator=0;}else this.accumulator=0;
   this.world.weather=this.env.weather;this.env.electrified=this.world.editor.electrified;this.camera.update(this.player,this.world,dt,this.panelPause?null:this.keys);
-  this.audio.update(this.player,this.env.weather,stopped);this.fpsFrames++;this.fpsClock+=elapsed;this.uiClock+=elapsed;this.saveClock+=elapsed;this.adaptClock+=elapsed;
+  this.audio.update(this.player,this.env.weather,stopped,this.camera.mode,this.env.hour);this.fpsFrames++;this.fpsClock+=elapsed;this.uiClock+=elapsed;this.saveClock+=elapsed;this.adaptClock+=elapsed;
   if(this.fpsClock>=1){this.fps=this.fpsFrames/this.fpsClock;this.fpsClock=0;this.fpsFrames=0;}
   if(this.uiClock>.1){this.ui.update();this.uiClock=0;}
   if(this.saveClock>30){if(this.userActive)this.autosave();this.saveClock=0;}
@@ -1793,7 +2490,7 @@ class RailboundApp {
   if(this.hidden||!this.renderEnabled)return;
   try{
    const dynamic=this.rolling.update(this.trains,this.world,this.camera,stopped?0:dt,this.simTime,this.camera.mode);
-   this.renderer.render([...this.world.batches,...dynamic],this.camera,this.world.def,this.env,this.player,this.simTime);
+   const life=this.life.update(this.world,this.camera,this.simTime,this.settings.quality,this.settings.wildlife);this.renderer.render([...this.world.batches,...dynamic,...life],this.camera,this.world.def,this.env,this.player,this.simTime);
    if(this.photoRequested){this.photoRequested=false;this.renderer.canvas.toBlob(blob=>{if(!blob)return this.ui.toast('Screenshot is unavailable in this browser.',true);downloadFile(`Railbound-${this.world.def.id}.png`,blob,'image/png');});}
   }catch(error){console.error(error);this.renderer.lost=true;this.ui.fatal(`Rendering stopped: ${error.message}`);}
  }
@@ -1805,10 +2502,12 @@ class RailboundApp {
   const typing=()=>['SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||(document.activeElement?.tagName==='INPUT'&&document.activeElement.type!=='range');
   window.addEventListener('keydown',e=>{
    if((e.ctrlKey||e.metaKey)&&e.code==='KeyS'){e.preventDefault();this.exportProject();return;}
+   if(e.code==='F2'){e.preventDefault();togglePhotoMode(this);return;}
+   if(e.code==='Escape'&&this.photoMode){e.preventDefault();togglePhotoMode(this,false);return;}
    if(e.code==='Escape'){if(!this.ui.dialog.open){e.preventDefault();this.togglePause();}return;}
    if(typing()||this.panelPause||!this.player)return;
    if(['Space','KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','KeyH','KeyX','KeyC'].includes(e.code))e.preventDefault();
-   this.keys.add(e.code);this.userActive=true;if(e.repeat)return;
+   this.keys.add(e.code);this.userActive=true;if(this.photoMode||e.repeat)return;
    const actions={Space:()=>this.player.emergency(),KeyC:()=>this.ui.cycleCamera(1),KeyM:()=>this.ui.openPanel('map'),KeyO:()=>this.player.toggleDoors(),KeyL:()=>this.ui.toggleControl('headlights'),KeyP:()=>this.ui.toggleControl('pantograph'),KeyK:()=>this.ui.toggleControl('wipers'),KeyX:()=>this.player.controls.sand=true,KeyR:()=>this.player.setReverser(this.player.controls.reverser===1?0:this.player.controls.reverser===0?-1:1),KeyH:()=>this.audio.enable().then(()=>{if(this.keys.has('KeyH'))this.audio.horn(true);})};
    if(/^Digit[1-6]$/.test(e.code))this.camera.setMode(CAMERA_MODES[Number(e.code.at(-1))-1]);
    if(actions[e.code])this.ui.guard(actions[e.code]);
