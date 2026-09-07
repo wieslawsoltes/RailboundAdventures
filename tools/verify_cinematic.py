@@ -132,6 +132,8 @@ with sync_playwright() as p:
         check('journey and settings survive save',page.evaluate('railbound.journey.stats.distance')==saved['journey']['distance'] and page.evaluate('railbound.settings.cameraMotion')==False)
         page.evaluate("async()=>{const {STOCK}=await import('./src/data.js');railbound.player.setStock(STOCK.find(s=>s.id==='velocity'));railbound.camera.setMode('orbit');railbound.camera.distance=36;railbound.camera.azimuth=.62;railbound.camera.elevation=.13;}")
         render(page,'velocity-loft')
+        check('orbit camera clears rendered cutting',page.evaluate('''()=>{const a=railbound,c=a.camera;return c.position[1]>=a.world.surfaceHeight(c.position[0],c.position[2])+2.4&&Math.hypot(c.position[0]-c.target[0],c.position[2]-c.target[2])>25;}'''))
+        check('terrain triangles clear train loading gauge',page.evaluate('''()=>{const a=railbound;for(let d=-60;d<=120;d+=5){const p=a.player.cursor.pose(d);for(const side of [-1.6,0,1.6]){const x=p.p[0]+side*p.right[0],z=p.p[2]+side*p.right[2];if(a.world.surfaceHeight(x,z)>p.p[1]+.35)return false;}}return true;}'''))
         page.evaluate("railbound.camera.setMode('cab')")
         render(page,'velocity-cab')
         page.evaluate("railbound.camera.setMode('chase');railbound.paused=false")

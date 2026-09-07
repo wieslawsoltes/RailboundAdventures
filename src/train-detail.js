@@ -88,11 +88,12 @@ export function vehicleDetails(stock,index,last) {
  }
  if(loco) {
   if(['electric','highspeed','metro'].includes(stock.kind)) {
-   for(let z=-L*.31;z<L*.28;z+=1.65) {
-    for(const side of [-1,1]){part('spring',[side*.74,5.20,z],[.21,.42,.21],hex('#77745d'),PAINT,[0,0,0],'roof',2);pipe([side*.74,5.43,z],[side*.74,5.43,Math.min(z+1.65,L*.28)],.055,hex('#a88756'),'roof');}
+   const roofEnd=stock.kind==='highspeed'?L*.5-7.7:L*.28;
+   for(let z=-L*.31;z<roofEnd;z+=1.65) {
+    for(const side of [-1,1]){part('spring',[side*.74,5.20,z],[.21,.42,.21],hex('#77745d'),PAINT,[0,0,0],'roof',2);pipe([side*.74,5.43,z],[side*.74,5.43,Math.min(z+1.65,roofEnd)],.055,hex('#a88756'),'roof');}
    }
    box([0,5.19,-L*.34],[1.5,.25,.66],dark,STEEL,'roof');
-   for(const side of [-1,1])part('cone',[side*.58,5.27,L*.26],[.24,.6,.24],silver,STEEL,[0,Math.PI/2,0],'roof');
+   for(const side of [-1,1])part('cone',[side*.58,5.27,Math.min(L*.26,roofEnd-.4)],[.24,.6,.24],silver,STEEL,[0,Math.PI/2,0],'roof');
   }
   if(stock.kind==='diesel') {
    for(const z of [-7,-3]) {

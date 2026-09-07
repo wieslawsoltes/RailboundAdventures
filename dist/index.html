@@ -886,9 +886,16 @@ function highSpeedNose(stock){
  if(!PRIMITIVES[key]){
   PRIMITIVES[key]=loft(L,0,1,0,TAU,28,40);
   PRIMITIVES[glass]=loft(L,.19,.54,Math.PI*.18,Math.PI*.82,12,20,.035);
+  const cap=new MeshBuilder(),center=[0,1.825,L*.5];
+  for(let i=0;i<40;i++)cap.tri(center,noseSurface(L,1,i*TAU/40),noseSurface(L,1,(i+1)*TAU/40),[0,0,1]);
+  PRIMITIVES[key+'-cap']=cap.geometry();
+  const rim=[[.19,.205,Math.PI*.18,Math.PI*.82],[.525,.54,Math.PI*.18,Math.PI*.82],[.19,.54,Math.PI*.18,Math.PI*.192],[.19,.54,Math.PI*.808,Math.PI*.82]];
+  rim.forEach((p,i)=>PRIMITIVES[key+'-rim-'+i]=loft(L,...p,12,20,.045));
  }
  const parts=[{g:key,m:transform([0,0,0]),c:hex(stock.color),pr:[0,.27,.40,0],role:'shell',tier:0},
   {g:glass,m:transform([0,0,0]),c:hex('#1d3944'),pr:[3,.11,.35,0],role:'glass',tier:0}];
+ parts.push({g:key+'-cap',m:transform([0,0,0]),c:hex(stock.color),pr:[0,.3,.4,0],role:'shell',tier:0});
+ for(let i=0;i<4;i++)parts.push({g:key+'-rim-'+i,m:transform([0,0,0]),c:hex('#263330'),pr:[0,.8,0,0],role:'cab',tier:0});
  const strip=new MeshBuilder();
  for(const side of [-1,1])for(let j=0;j<26;j++){
   const t=j/28,u=(j+1)/28,angle=side===1?-.05:Math.PI+.05;
@@ -1181,10 +1188,91 @@ function surveyRoute(def, terrain) {
 
 return {GENERATOR_VERSION,REGION_PROFILES,generationOptions,TerrainField,surveyRoute};
 })();
+// ---- src/terrain-mesh.js ----
+const __m_src_terrain_mesh_js = (() => {
+const {Geometry} = __m_src_geometry_js;
+const {norm,clamp} = __m_src_math_js;
+/** Track-aware terrain tessellation with conforming transition edges.
+ * Numerical cuttings can be much narrower than a regular terrain tile. Only
+ * cells near the railway subdivide; adjacent coarse cells share their edge
+ * vertices. Camera queries use the SAME triangles that the near mesh renders.
+ */
+
+
+function terrainPatch(world,x0,z0,span,n,refine=false){
+ const vertices=[],indices=[],step=span/n,cache=new Map(),levels=new Map();
+ const cells=new Uint32Array(n*n*2),division=new Uint8Array(n*n);
+ let low=Infinity,high=-Infinity;
+ const level=(x,z)=>{
+  if(!refine)return 1;const key=x+','+z;if(levels.has(key))return levels.get(key);
+  const near=world.network.nearest(x0+(x+.5)*step,z0+(z+.5)*step,85+step);
+  const value=near?4:1;levels.set(key,value);return value;
+ };
+ const vertex=(x,z)=>{
+  const key=x+','+z;if(cache.has(key))return cache.get(key);
+  const wx=x0+x*step/4,wz=z0+z*step/4,y=world.height(wx,wz),e=refine?2.5:Math.max(4,step*.22);
+  const normal=norm([world.height(wx-e,wz)-world.height(wx+e,wz),2*e,world.height(wx,wz-e)-world.height(wx,wz+e)]);
+  const climate=world.terrain.climate(wx,wz,y),index=vertices.length/8;
+  vertices.push(wx,y,wz,...normal,climate.moisture,climate.drainage);
+  low=Math.min(low,y);high=Math.max(high,y);cache.set(key,index);return index;
+ };
+ for(let z=0;z<n;z++)for(let x=0;x<n;x++){
+  const cell=z*n+x,start=indices.length,m=level(x,z),gx=x*4,gz=z*4;
+  division[cell]=m;cells[cell*2]=start;
+  if(m===4){
+   for(let j=0;j<4;j++)for(let i=0;i<4;i++){
+    const a=vertex(gx+i,gz+j),b=vertex(gx+i,gz+j+1),c=vertex(gx+i+1,gz+j),d=vertex(gx+i+1,gz+j+1);
+    indices.push(a,b,c,c,b,d);
+   }
+  }else{
+   const edge=[level(x-1,z),level(x,z+1),level(x+1,z),level(x,z-1)];
+   if(edge.every(v=>v===1)){
+    const a=vertex(gx,gz),b=vertex(gx,gz+4),c=vertex(gx+4,gz),d=vertex(gx+4,gz+4);indices.push(a,b,c,c,b,d);
+   }else{
+    const border=[],corners=[[gx,gz],[gx,gz+4],[gx+4,gz+4],[gx+4,gz]],center=vertex(gx+2,gz+2);
+    for(let e=0;e<4;e++){const a=corners[e],b=corners[(e+1)%4];for(let k=0;k<edge[e];k++)border.push(vertex(a[0]+(b[0]-a[0])*k/edge[e],a[1]+(b[1]-a[1])*k/edge[e]));}
+    for(let i=0;i<border.length;i++)indices.push(center,border[i],border[(i+1)%border.length]);
+   }
+  }
+  cells[cell*2+1]=indices.length-start;
+ }
+ // Boundary skirts have the same subdivisions as the patch edge they seal.
+ const perimeter=[];
+ for(let x=0;x<n;x++)for(let i=0,m=Math.max(level(x,0),level(x,-1));i<m;i++)perimeter.push(vertex(x*4+i*4/m,0));
+ for(let z=0;z<n;z++)for(let i=0,m=Math.max(level(n-1,z),level(n,z));i<m;i++)perimeter.push(vertex(n*4,z*4+i*4/m));
+ for(let x=n-1;x>=0;x--)for(let i=0,m=Math.max(level(x,n-1),level(x,n));i<m;i++)perimeter.push(vertex((x+1)*4-i*4/m,n*4));
+ for(let z=n-1;z>=0;z--)for(let i=0,m=Math.max(level(0,z),level(-1,z));i<m;i++)perimeter.push(vertex(0,(z+1)*4-i*4/m));
+ for(let j=0;j<perimeter.length;j++){
+  const a=perimeter[j],b=perimeter[(j+1)%perimeter.length],i=vertices.length/8,av=vertices.slice(a*8,a*8+8),bv=vertices.slice(b*8,b*8+8);
+  av[1]-=32;bv[1]-=32;vertices.push(...av,...bv);indices.push(a,b,i,i,b,i+1);
+ }
+ const geometry=new Geometry(vertices,indices),v=geometry.vertices,ii=geometry.indices;
+ const triangleHeight=(offset,x,z)=>{
+  const a=ii[offset]*8,b=ii[offset+1]*8,c=ii[offset+2]*8;
+  const ax=v[a],az=v[a+2],bx=v[b],bz=v[b+2],cx=v[c],cz=v[c+2];
+  const den=(bz-cz)*(ax-cx)+(cx-bx)*(az-cz);if(Math.abs(den)<1e-8)return null;
+  const u=((bz-cz)*(x-cx)+(cx-bx)*(z-cz))/den,w=((cz-az)*(x-cx)+(ax-cx)*(z-cz))/den,t=1-u-w;
+  return u>=-1e-5&&w>=-1e-5&&t>=-1e-5?u*v[a+1]+w*v[b+1]+t*v[c+1]:null;
+ };
+ return {geometry,center:[x0+span/2,(low+high)/2,z0+span/2],radius:Math.hypot(span*.71,(high-low)*.5)+40,
+  cells,division,step,x0,z0,span,
+  heightAt(x,z){
+   const tx=clamp((x-x0)/step,0,n-1e-8),tz=clamp((z-z0)/step,0,n-1e-8),ix=Math.floor(tx),iz=Math.floor(tz),cell=iz*n+ix,start=cells[cell*2];
+   if(division[cell]===4){const u=(tx-ix)*4,w=(tz-iz)*4,sx=Math.floor(u),sz=Math.floor(w),offset=start+(sz*4+sx)*6+((u-sx)+(w-sz)>1?3:0);return triangleHeight(offset,x,z)??world.height(x,z);}
+   for(let i=start;i<start+cells[cell*2+1];i+=3){const h=triangleHeight(i,x,z);if(h!==null)return h;}
+   return world.height(x,z);
+  }
+ };
+}
+
+return {terrainPatch};
+})();
 // ---- src/world-detail.js ----
 const __m_src_world_detail_js = (() => {
+const {terrainPatch} = __m_src_terrain_mesh_js;
 const {Geometry, MeshBuilder, PRIMITIVES, Batch, sphereGeometry} = __m_src_geometry_js;
 const {rng, hash2, noise2, fbm, hex, clamp, smooth, lerp, norm, add, sub, mul, transform, frameMatrix, mat4Mul, TAU} = __m_src_math_js;
+
 /** Expedition scene construction. All placement consumes named, deterministic streams. */
 
 
@@ -1229,34 +1317,23 @@ function flowerGeometry() {
 }
 PRIMITIVES.boulder=rockGeometry();PRIMITIVES.grass=grassGeometry();PRIMITIVES.fern=grassGeometry(true);PRIMITIVES.flower=flowerGeometry();
 
-function terrainTile(world,x0,z0,span,n) {
- const vertices=[],indices=[],field=world.terrain,step=span/n;
- let lo=Infinity,hi=-Infinity;
- for(let z=0;z<=n;z++) for(let x=0;x<=n;x++) {
-  const wx=x0+x*step,wz=z0+z*step,y=world.height(wx,wz),e=Math.max(4,step*.22);
-  const normal=norm([world.height(wx-e,wz)-world.height(wx+e,wz),2*e,world.height(wx,wz-e)-world.height(wx,wz+e)]);
-  const climate=field.climate(wx,wz,y);vertices.push(wx,y,wz,...normal,climate.moisture,climate.drainage);lo=Math.min(lo,y);hi=Math.max(hi,y);
- }
- for(let z=0;z<n;z++) for(let x=0;x<n;x++) {const i=z*(n+1)+x;indices.push(i,i+n+1,i+1,i+1,i+n+1,i+n+2);}
- // Skirts conceal T-junction cracks where coarse and fine tiles meet.
- const perimeter=[];for(let x=0;x<=n;x++)perimeter.push(x);for(let z=1;z<=n;z++)perimeter.push(z*(n+1)+n);
- for(let x=n-1;x>=0;x--)perimeter.push(n*(n+1)+x);for(let z=n-1;z>0;z--)perimeter.push(z*(n+1));
- for(let j=0;j<perimeter.length;j++) {
-  const a=perimeter[j],b=perimeter[(j+1)%perimeter.length],i=vertices.length/8;
-  const av=vertices.slice(a*8,a*8+8),bv=vertices.slice(b*8,b*8+8);av[1]-=32;bv[1]-=32;
-  vertices.push(...av,...bv);indices.push(a,b,i,i,b,i+1);
- }
- const batch=world.builder.mesh(new Geometry(vertices,indices),[x0+span/2,(lo+hi)/2,z0+span/2],Math.hypot(span*.71,(hi-lo)*.5)+40,[1,.95,0,0]);
- batch.maxDistance=15000;return batch;
+function terrainTile(world,x0,z0,span,n,refine=false) {
+ const patch=terrainPatch(world,x0,z0,span,n,refine);
+ const batch=world.builder.mesh(patch.geometry,patch.center,patch.radius,[1,.95,0,0]);
+ batch.maxDistance=15000;
+ if(n!==8)world.terrainPatches.set(`${Math.floor(x0/span)},${Math.floor(z0/span)}`,patch);
+ return batch;
 }
 
 async function buildExpeditionTerrain(world,onProgress=()=>{}) {
  const f=world.terrain,tile=640,count=f.half/tile;let done=0;
+ world.terrainPatches=new Map();
+ world.surfaceHeight=(x,z)=>world.terrainPatches.get(`${Math.floor(x/tile)},${Math.floor(z/tile)}`)?.heightAt(x,z)??world.height(x,z);
  for(let z=-count;z<count;z++) {
   for(let x=-count;x<count;x++) {
    const cx=x*tile+tile*.5,cz=z*tile+tile*.5;
    const near=world.network.nearest(cx,cz,850),fine=!!near;
-   const batch=terrainTile(world,x*tile,z*tile,tile,fine?32:12);
+   const batch=terrainTile(world,x*tile,z*tile,tile,fine?32:12,fine);
    if(fine) {batch.lodNear=3000;const far=terrainTile(world,x*tile,z*tile,tile,8);far.lodFar=3000;far.castShadow=false;}
    done++;
   }
@@ -1826,11 +1903,12 @@ function vehicleDetails(stock,index,last) {
  }
  if(loco) {
   if(['electric','highspeed','metro'].includes(stock.kind)) {
-   for(let z=-L*.31;z<L*.28;z+=1.65) {
-    for(const side of [-1,1]){part('spring',[side*.74,5.20,z],[.21,.42,.21],hex('#77745d'),PAINT,[0,0,0],'roof',2);pipe([side*.74,5.43,z],[side*.74,5.43,Math.min(z+1.65,L*.28)],.055,hex('#a88756'),'roof');}
+   const roofEnd=stock.kind==='highspeed'?L*.5-7.7:L*.28;
+   for(let z=-L*.31;z<roofEnd;z+=1.65) {
+    for(const side of [-1,1]){part('spring',[side*.74,5.20,z],[.21,.42,.21],hex('#77745d'),PAINT,[0,0,0],'roof',2);pipe([side*.74,5.43,z],[side*.74,5.43,Math.min(z+1.65,roofEnd)],.055,hex('#a88756'),'roof');}
    }
    box([0,5.19,-L*.34],[1.5,.25,.66],dark,STEEL,'roof');
-   for(const side of [-1,1])part('cone',[side*.58,5.27,L*.26],[.24,.6,.24],silver,STEEL,[0,Math.PI/2,0],'roof');
+   for(const side of [-1,1])part('cone',[side*.58,5.27,Math.min(L*.26,roofEnd-.4)],[.24,.6,.24],silver,STEEL,[0,Math.PI/2,0],'roof');
   }
   if(stock.kind==='diesel') {
    for(const z of [-7,-3]) {
@@ -1967,10 +2045,10 @@ class RollingStockRenderer {
   else if(stock.kind==='diesel'&&isLoco){box([0,3.18,-2.8],[2.68,3.12,L*.61],col);box([0,3.35,L*.28],[3.2,3.5,5.4],col,PAINT,'shell');box([0,5.18,L*.28],[3.38,.22,5.8],DARK);box([0,4.25,L*.405],[2.67,1.2,.08],GLASS,WINDOW,'glass');for(const side of [-1,1]){box([side*1.62,4.22,L*.28],[.07,1.2,2.9],GLASS,WINDOW,'glass');box([side*1.46,3.35,-3.9],[.04,1.8,L*.41],DARK);for(let z=-L*.38;z<L*.07;z+=.4)box([side*1.49,3.35,z],[.05,1.72,.08],hex('#72786a'));box([side*1.72,1.65,0],[.45,.18,L-.4],DARK);rod([side*1.84,2.75,-L*.45],[side*1.84,2.75,L*.44],.055,CREAM);for(let z=-L*.42;z<L*.4;z+=2)rod([side*1.84,1.7,z],[side*1.84,2.75,z],.048,CREAM);}box([0,2.3,L*.47],[2.85,1.4,1.3],col);for(const x of [-.85,.85])box([x,3.01,L*.502],[.4,.23,.11],CREAM,[4,.25,0,5],'headlight');for(const z of [-7,-3])part('cylinder',[0,4.85,z],[1.75,.2,1.75],DARK);}
   else{const hs=stock.kind==='highspeed'&&isLoco;const bodyLen=hs?L-7:L-.9;part('body',[0,3.1,hs?-3.5:0],[3.17,3.42,bodyLen],col,PAINT,[0,0,0],'shell');box([0,4.87,hs?-3.5:0],[2.47,.16,bodyLen-.4],hex('#c8ceca'));for(const side of [-1,1]){box([side*1.587,2.5,hs?-3.5:0],[.028,.36,bodyLen-.5],stripe);box([side*1.587,1.9,hs?-3.5:0],[.028,.18,bodyLen-.5],DARK);const start=-L*.5+2.6,end=hs?L*.22:L*.5-2.6;for(let z=start;z<end;z+=2.24)box([side*1.593,3.68,z],[.025,1.06,1.65],GLASS,WINDOW,'glass');for(const z of [-L*.37,(hs?L*.18:L*.37)]){box([side*1.607,2.98,z],[.045,2.62,1.28],col,PAINT,`door${side}`);box([side*1.634,3.69,z],[.024,.89,.86],GLASS,WINDOW,`door${side}`);box([side*1.644,2.79,z+.46],[.028,.24,.035],METAL,STEEL,`door${side}`);box([side*1.72,1.64,z],[.36,.11,1.43],DARK);}if(isLoco)part('label',[side*1.609,2.05,-3],[1,.50,.50],hex('#f2ede1'),[0,.7,0,0],[side<0?Math.PI:0,0,0]);}
    if(isLoco){if(hs){parts.push(...highSpeedNose(stock));for(const side of [-1,1])part('sphere',[side*.27,1.97,L*.491],[.22,.13,.055],CREAM,[4,.24,0,5],[0,0,0],'headlight');}else{box([0,3.72,L*.481],[2.66,1.13,.055],GLASS,WINDOW,'glass');box([0,3.72,L*.488],[.065,1.19,.08],DARK);box([0,2.39,L*.49],[2.9,1.03,.18],col);box([0,1.93,L*.495],[2.92,.22,.2],stripe);for(const x of [-1.01,1.01])box([x,2.55,L*.502],[.39,.27,.065],CREAM,[4,.23,0,4.5],'headlight');box([0,4.36,L*.484],[.36,.18,.07],CREAM,[4,.25,0,2.5],'headlight');}
-    box([0,4.93,L*.34],[2.64,.09,2.9],DARK,PAINT,'cab');box([0,2.67,L*.37],[2.82,.25,1.0],DARK,PAINT,'cab');box([0,2.91,L*.395],[1.17,.12,.63],hex('#30464b'),PAINT,'cab');box([-.5,2.991,L*.394],[.46,.015,.35],hex('#559d9a'),[4,.4,0,.6],'cab');box([.5,2.991,L*.394],[.33,.015,.3],hex('#50745d'),[4,.4,0,.5],'cab');for(const side of [-1,1])box([side*1.44,3.6,L*.465],[.11,2.12,.14],DARK,PAINT,'cab');box([0,4.57,L*.465],[2.98,.11,.15],DARK,PAINT,'cab');box([0,2.43,L*.465],[2.98,.15,.15],DARK,PAINT,'cab');
+    if(!hs)box([0,4.93,L*.34],[2.64,.09,2.9],DARK,PAINT,'cab');box([0,2.67,L*.37],[2.82,.25,1.0],DARK,PAINT,'cab');box([0,2.91,L*.395],[1.17,.12,.63],hex('#30464b'),PAINT,'cab');box([-.5,2.991,L*.394],[.46,.015,.35],hex('#559d9a'),[4,.4,0,.6],'cab');box([.5,2.991,L*.394],[.33,.015,.3],hex('#50745d'),[4,.4,0,.5],'cab');if(!hs){for(const side of [-1,1])box([side*1.44,3.6,L*.465],[.11,2.12,.14],DARK,PAINT,'cab');box([0,4.57,L*.465],[2.98,.11,.15],DARK,PAINT,'cab');box([0,2.43,L*.465],[2.98,.15,.15],DARK,PAINT,'cab');}
    }
   }
-  if(isLoco&&['electric','highspeed','metro'].includes(stock.kind)){for(const z of [-L*.21,L*.15]){box([0,5.04,z],[1.8,.25,2.3],hex('#818b82'));for(const side of [-1,1]){rod([side*.42,5.05,z-1.05],[side*.42,5.52,z+.4],.067,DARK,'pantograph');rod([side*.42,5.52,z+.4],[side*.42,5.96,z-.3],.067,DARK,'pantograph');}box([0,5.99,z-.3],[1.6,.06,.22],METAL,STEEL,'pantograph');}for(let z=-L*.33;z<L*.3;z+=2.6)box([0,4.99,z],[1.3,.22,1.1],hex('#a5ada5'));}
+  if(isLoco&&['electric','highspeed','metro'].includes(stock.kind)){for(const z of [-L*.21,L*.15]){box([0,5.04,z],[1.8,.25,2.3],hex('#818b82'));for(const side of [-1,1]){rod([side*.42,5.05,z-1.05],[side*.42,5.52,z+.4],.067,DARK,'pantograph');rod([side*.42,5.52,z+.4],[side*.42,5.96,z-.3],.067,DARK,'pantograph');}box([0,5.99,z-.3],[1.6,.06,.22],METAL,STEEL,'pantograph');}for(let z=-L*.33;z<(stock.kind==='highspeed'?L*.5-8:L*.3);z+=2.6)box([0,4.99,z],[1.3,.22,1.1],hex('#a5ada5'));}
   if(!isLoco&&stock.kind!=='diesel'){box([0,3.05,L*.498],[2.43,2.48,.14],DARK);box([0,3.04,-L*.498],[2.43,2.48,.14],DARK);box([0,2.92,L*.505],[1.17,2.16,.1],hex('#78837e'));}
   for(const z of [-L*.5-.2,L*.5+.2]){box([0,1.1,z],[.28,.23,.63],METAL,STEEL);for(const side of [-1,1]){part('cylinder',[side*.92,1.19,z],[.32,.35,.32],DARK,RUBBER,[0,Math.PI/2,0]);}}
   if(last){for(const x of [-1.05,1.05])box([x,2.36,-L*.503],[.18,.22,.05],hex('#d53e2c'),[4,.4,0,2]);}
@@ -2017,12 +2095,16 @@ class CameraRig {
  setMode(mode){if(!CAMERA_MODES.includes(mode))return;this.mode=mode;this.initial=true;this.trackAnchor=null;if(mode==='aerial')this.distance=480;else if(mode==='chase'||mode==='orbit')this.distance=90;if(mode==='free'){const f=norm(sub(this.target,this.position));this.freeYaw=Math.atan2(f[0],f[2]);this.freePitch=Math.asin(f[1]);}}
  rotate(dx,dy){if(this.mode==='cab'){this.cabYaw=clamp(this.cabYaw-dx*.004,-1.55,1.55);this.cabPitch=clamp(this.cabPitch-dy*.003,-.6,.6);}else if(this.mode==='free'){this.freeYaw-=dx*.004;this.freePitch=clamp(this.freePitch-dy*.003,-1.5,1.5);}else{this.azimuth-=dx*.005;this.elevation=clamp(this.elevation+dy*.004,.055,1.48);}}
  zoom(delta){if(this.mode==='cab'){this.fov=clamp(this.fov+delta*.02,38,90);return;}this.distance=clamp(this.distance*Math.exp(delta*.001),10,2200);}
- update(train,world,dt,keys){const p=train.cursor.pose(),pose=train.cursor.pose((globalThis.innerWidth/globalThis.innerHeight||1.6)<.75?-2:-Math.min(train.length*.25,40)),f=p.f,right=p.right;let eye,aim;
+ update(train,world,dt,keys){const p=train.cursor.pose(),pose=train.cursor.pose((globalThis.innerWidth/globalThis.innerHeight||1.6)<.75?-2:-Math.min(train.length*.25,40)),f=p.f,right=p.right,surface=world.surfaceHeight?.bind(world)||world.height.bind(world);let eye,aim;
   if(this.mode==='free'){const dir=[Math.sin(this.freeYaw)*Math.cos(this.freePitch),Math.sin(this.freePitch),Math.cos(this.freeYaw)*Math.cos(this.freePitch)],r=norm(cross([0,1,0],dir));const speed=(keys?.has('ShiftLeft')?180:38)*dt;for(const [key,vec]of [['KeyW',dir],['KeyS',mul(dir,-1)],['KeyD',r],['KeyA',mul(r,-1)],['KeyE',[0,1,0]],['KeyQ',[0,-1,0]]])if(keys?.has(key))this.position=add(this.position,mul(vec,speed));this.target=add(this.position,mul(dir,50));return;}
   if(this.mode==='cab'){eye=add(add(p.p,mul(f,train.stock.kind==='steam'?-3:train.stock.locoLength*(train.stock.kind==='highspeed'?.27:.34))),[0,3.78,0]);eye=add(eye,mul(right,-.45));const look=norm(add(add(mul(f,Math.cos(this.cabYaw)),mul(right,Math.sin(this.cabYaw))),[0,this.cabPitch,0]));aim=add(eye,mul(look,90));const vibration=this.motion?Math.min(Math.abs(train.speed)/35,1)*.014:0;eye[1]+=Math.sin(train.cursor.odometer*1.7)*vibration;eye=add(eye,mul(right,Math.sin(train.cursor.odometer*.11)*vibration*1.2));this.position=eye;this.target=aim;this.initial=false;return;}
   if(this.mode==='trackside'){if(!this.trackAnchor||Math.hypot(...sub(this.trackAnchor,p.p))>210){const ahead=train.cursor.pose(100);this.trackAnchor=add(add(ahead.p,mul(ahead.right,-20)),[0,4,0]);}eye=this.trackAnchor;aim=add(p.p,[0,2.5,0]);}
-  else{if(this.photoOrbit&&this.mode==='orbit')this.azimuth+=dt*.12;aim=add(pose.p,[0,2.4,0]);const el=this.mode==='aerial'?Math.max(.8,this.elevation):this.elevation;const horizontal=this.distance*Math.cos(el);eye=add(add(add(aim,mul(right,Math.sin(this.azimuth)*horizontal)),mul(f,Math.cos(this.azimuth)*horizontal)),[0,Math.sin(el)*this.distance,0]);const ground=world.height(eye[0],eye[2]);eye[1]=Math.max(eye[1],ground+2.5,world.def.water+3);}
-  if(this.mode==='chase'||this.mode==='orbit'){for(let i=1;i<=12;i++){const q=mix3(aim,eye,i/12),ground=world.height(q[0],q[2])+1.7;if(q[1]<ground){eye=mix3(aim,eye,Math.max(.12,(i-1)/12));eye[1]=Math.max(eye[1],world.height(eye[0],eye[2])+2);break;}}}const alpha=this.initial?1:1-Math.exp(-dt*(this.mode==='chase'?4.8:7));this.position=mix3(this.position,eye,alpha);this.target=mix3(this.target,aim,alpha);this.initial=false;
+  else{if(this.photoOrbit&&this.mode==='orbit')this.azimuth+=dt*.12;aim=add(pose.p,[0,2.4,0]);const el=this.mode==='aerial'?Math.max(.8,this.elevation):this.elevation;const horizontal=this.distance*Math.cos(el);eye=add(add(add(aim,mul(right,Math.sin(this.azimuth)*horizontal)),mul(f,Math.cos(this.azimuth)*horizontal)),[0,Math.sin(el)*this.distance,0]);const ground=surface(eye[0],eye[2]);eye[1]=Math.max(eye[1],ground+2.5,world.def.water+3);}
+  if(this.mode==='chase'||this.mode==='orbit'){
+   // Raise the boom over the rendered surface. Shortening it toward the target
+   // could put the camera inside a coach in a steep cutting.
+   for(let i=1;i<=16;i++){const t=i/16,q=mix3(aim,eye,t),ground=surface(q[0],q[2])+2.5;if(q[1]<ground)eye[1]=Math.max(eye[1],aim[1]+(ground-aim[1])/t);}
+  }const alpha=this.initial?1:1-Math.exp(-dt*(this.mode==='chase'?4.8:7));this.position=mix3(this.position,eye,alpha);this.target=mix3(this.target,aim,alpha);this.position[1]=Math.max(this.position[1],surface(this.position[0],this.position[2])+2.5);this.initial=false;
  }
 }
 

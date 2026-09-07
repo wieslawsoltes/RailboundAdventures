@@ -25,9 +25,16 @@ export function highSpeedNose(stock){
  if(!PRIMITIVES[key]){
   PRIMITIVES[key]=loft(L,0,1,0,TAU,28,40);
   PRIMITIVES[glass]=loft(L,.19,.54,Math.PI*.18,Math.PI*.82,12,20,.035);
+  const cap=new MeshBuilder(),center=[0,1.825,L*.5];
+  for(let i=0;i<40;i++)cap.tri(center,noseSurface(L,1,i*TAU/40),noseSurface(L,1,(i+1)*TAU/40),[0,0,1]);
+  PRIMITIVES[key+'-cap']=cap.geometry();
+  const rim=[[.19,.205,Math.PI*.18,Math.PI*.82],[.525,.54,Math.PI*.18,Math.PI*.82],[.19,.54,Math.PI*.18,Math.PI*.192],[.19,.54,Math.PI*.808,Math.PI*.82]];
+  rim.forEach((p,i)=>PRIMITIVES[key+'-rim-'+i]=loft(L,...p,12,20,.045));
  }
  const parts=[{g:key,m:transform([0,0,0]),c:hex(stock.color),pr:[0,.27,.40,0],role:'shell',tier:0},
   {g:glass,m:transform([0,0,0]),c:hex('#1d3944'),pr:[3,.11,.35,0],role:'glass',tier:0}];
+ parts.push({g:key+'-cap',m:transform([0,0,0]),c:hex(stock.color),pr:[0,.3,.4,0],role:'shell',tier:0});
+ for(let i=0;i<4;i++)parts.push({g:key+'-rim-'+i,m:transform([0,0,0]),c:hex('#263330'),pr:[0,.8,0,0],role:'cab',tier:0});
  const strip=new MeshBuilder();
  for(const side of [-1,1])for(let j=0;j<26;j++){
   const t=j/28,u=(j+1)/28,angle=side===1?-.05:Math.PI+.05;

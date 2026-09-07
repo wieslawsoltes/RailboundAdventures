@@ -50,6 +50,14 @@ construction. Flocks use deterministic paths, wing animation, instanced geometry
 camera-distance culling and a 12/32/80-bird quality budget. Wildlife can be turned
 off without affecting the simulation. Wildlife is scenic, not ecological AI.
 
+Track-adjacent terrain cells subdivide to five-metre triangles, with conforming
+transition edges into coarse cells. This fixes the numerical-field/render-mesh
+mismatch that could bury the cab in a deep cutting. Camera collision samples the
+actual rendered triangles and lifts its boom instead of collapsing it into a
+coach. Loading-gauge clearance and shared-edge topology have dedicated tests.
+High-speed cab framing follows the nose loft; roof equipment stops before the
+taper and the nose has a closed end cap.
+
 ## Driving and sound
 
 The read-only journey director samples the selected route ahead. Its service

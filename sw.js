@@ -11,7 +11,7 @@ const FILES = [
   'src/persistence.js', 'src/ui.js', 'src/main.js',
   'src/postprocess.js', 'src/cinematic-models.js', 'src/world-life.js', 'src/journey.js', 'src/cinematic-ui.js',
   'src/generation.js', 'src/generation-worker.js', 'src/generation-ui.js',
-  'src/world-detail.js', 'src/train-detail.js'
+  'src/world-detail.js', 'src/train-detail.js', 'src/terrain-mesh.js'
 ].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));

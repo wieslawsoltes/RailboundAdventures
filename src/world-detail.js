@@ -1,3 +1,4 @@
+import {terrainPatch} from './terrain-mesh.js';
 /** Expedition scene construction. All placement consumes named, deterministic streams. */
 import {Geometry, MeshBuilder, PRIMITIVES, Batch, sphereGeometry} from './geometry.js';
 import {rng, hash2, noise2, fbm, hex, clamp, smooth, lerp, norm, add, sub, mul, transform, frameMatrix, mat4Mul, TAU} from './math.js';
@@ -42,34 +43,23 @@ function flowerGeometry() {
 }
 PRIMITIVES.boulder=rockGeometry();PRIMITIVES.grass=grassGeometry();PRIMITIVES.fern=grassGeometry(true);PRIMITIVES.flower=flowerGeometry();
 
-function terrainTile(world,x0,z0,span,n) {
- const vertices=[],indices=[],field=world.terrain,step=span/n;
- let lo=Infinity,hi=-Infinity;
- for(let z=0;z<=n;z++) for(let x=0;x<=n;x++) {
-  const wx=x0+x*step,wz=z0+z*step,y=world.height(wx,wz),e=Math.max(4,step*.22);
-  const normal=norm([world.height(wx-e,wz)-world.height(wx+e,wz),2*e,world.height(wx,wz-e)-world.height(wx,wz+e)]);
-  const climate=field.climate(wx,wz,y);vertices.push(wx,y,wz,...normal,climate.moisture,climate.drainage);lo=Math.min(lo,y);hi=Math.max(hi,y);
- }
- for(let z=0;z<n;z++) for(let x=0;x<n;x++) {const i=z*(n+1)+x;indices.push(i,i+n+1,i+1,i+1,i+n+1,i+n+2);}
- // Skirts conceal T-junction cracks where coarse and fine tiles meet.
- const perimeter=[];for(let x=0;x<=n;x++)perimeter.push(x);for(let z=1;z<=n;z++)perimeter.push(z*(n+1)+n);
- for(let x=n-1;x>=0;x--)perimeter.push(n*(n+1)+x);for(let z=n-1;z>0;z--)perimeter.push(z*(n+1));
- for(let j=0;j<perimeter.length;j++) {
-  const a=perimeter[j],b=perimeter[(j+1)%perimeter.length],i=vertices.length/8;
-  const av=vertices.slice(a*8,a*8+8),bv=vertices.slice(b*8,b*8+8);av[1]-=32;bv[1]-=32;
-  vertices.push(...av,...bv);indices.push(a,b,i,i,b,i+1);
- }
- const batch=world.builder.mesh(new Geometry(vertices,indices),[x0+span/2,(lo+hi)/2,z0+span/2],Math.hypot(span*.71,(hi-lo)*.5)+40,[1,.95,0,0]);
- batch.maxDistance=15000;return batch;
+function terrainTile(world,x0,z0,span,n,refine=false) {
+ const patch=terrainPatch(world,x0,z0,span,n,refine);
+ const batch=world.builder.mesh(patch.geometry,patch.center,patch.radius,[1,.95,0,0]);
+ batch.maxDistance=15000;
+ if(n!==8)world.terrainPatches.set(`${Math.floor(x0/span)},${Math.floor(z0/span)}`,patch);
+ return batch;
 }
 
 export async function buildExpeditionTerrain(world,onProgress=()=>{}) {
  const f=world.terrain,tile=640,count=f.half/tile;let done=0;
+ world.terrainPatches=new Map();
+ world.surfaceHeight=(x,z)=>world.terrainPatches.get(`${Math.floor(x/tile)},${Math.floor(z/tile)}`)?.heightAt(x,z)??world.height(x,z);
  for(let z=-count;z<count;z++) {
   for(let x=-count;x<count;x++) {
    const cx=x*tile+tile*.5,cz=z*tile+tile*.5;
    const near=world.network.nearest(cx,cz,850),fine=!!near;
-   const batch=terrainTile(world,x*tile,z*tile,tile,fine?32:12);
+   const batch=terrainTile(world,x*tile,z*tile,tile,fine?32:12,fine);
    if(fine) {batch.lodNear=3000;const far=terrainTile(world,x*tile,z*tile,tile,8);far.lodFar=3000;far.castShadow=false;}
    done++;
   }
