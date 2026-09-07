@@ -64,12 +64,12 @@ jobs:
         run: npm test
       - name: Build and validate all distribution assets
         run: npm run build:pages
-      - name: Commit complete implementation and generated standalone distribution
+      - name: Commit complete source and generated standalone distribution
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          rm .github/workflows/import-expedition.yml
-          git add src styles tests tools docs package.json sw.js README.md dist .github/workflows
+          git restore .github/workflows
+          git add src styles tests tools docs package.json sw.js README.md dist
           git diff --cached --check
           git commit -m 'feat: Expedition terrain, regional ecosystems, surveyed routes and detailed rolling stock' -m 'Add deterministic worker-based regional height fields, hydraulic and thermal erosion, drainage and climate ecology, asymmetric grade-limited route surveys, regional civil structures and landmarks, triplanar materials, mechanical train assemblies, distance LOD, seeded world browser, legacy-save compatibility and candidate WebGPU/WebGL regression coverage.'
           git push origin HEAD:feat/expedition-worlds-detailed-trains
