@@ -1,5 +1,11 @@
 # Railbound Adventures
 
+## Expeditions: procedural worlds and detailed trains
+
+Version 3 replaces the shared circular geography with eight seeded regional terrain models, erosion, drainage-aware ecology, surveyed asymmetric routes, regional landmarks and scenic viewpoints. Trains gain cached mechanical assemblies, detailed wheel profiles, suspension, roof equipment and cab geometry with distance-based detail levels. Existing version-2 saves keep their original geography.
+
+Open **Worlds** to choose a seed, adjust relief, vegetation and erosion, then **Survey & enter**. See [Expedition architecture, controls and validation](docs/EXPEDITIONS.md) for implementation details and explicit boundaries.
+
 **[Play in your browser](https://wieslawsoltes.github.io/RailboundAdventures/)** · [Deployment workflow](https://github.com/wieslawsoltes/RailboundAdventures/actions/workflows/pages.yml)
 
 An original, dependency-free browser railway sandbox and driving game. Native

@@ -37,7 +37,7 @@ export class RailboundApp {
   this.loadingWorld=true;this.accumulator=0;this.audio.stop();this.ui.loading('Surveying the railway',.01);
   let next;
   try{
-   next=new RailwayWorld(def,editor||{});
+   next=await RailwayWorld.create(def,editor||{});
    const stock=restored?STOCK.find(s=>s.id===restored.player.stock):(this.player?.stock||STOCK[0]);
    const player=new Train(next.network,stock,'player');
    const traffic=new Traffic(next.network);next.traffic=traffic;

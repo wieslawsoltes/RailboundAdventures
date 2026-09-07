@@ -1,24 +1,42 @@
+import {TerrainField, GENERATOR_VERSION} from './generation.js';
+import {buildExpeditionTerrain, buildEcosystem, buildLandmarks, buildCivilEngineering} from './world-detail.js';
 import {clamp,lerp,smooth,fbm,noise2,rng,hex,add,sub,mul,norm,cross,frameMatrix,transform,mat4Mul,pointTransform,TAU} from './math.js';
 import {Geometry,MeshBuilder,SceneBuilder,PRIMITIVES} from './geometry.js';
 import {RailNetwork} from './tracks.js';
 import {makeStations} from './physics.js';
 const C={rail:hex('#a0a4a0'),railSide:hex('#5f6663'),tie:hex('#837d6d'),ballast:hex('#8e9187'),concrete:hex('#c2beb0'),dark:hex('#333b38'),trunk:hex('#584b3b'),lamp:hex('#ffde9b')};
 export class RailwayWorld {
- constructor(def,editor={}){this.def=def;this.editor={seed:def.seed,objects:[],heightEdits:[],stations:[],customTrack:null,electrified:true,...editor};this.seed=this.editor.seed;this.network=new RailNetwork(def,this.editor.customTrack);this.stations=makeStations(this.network,def,this.editor.stations);this.batches=[];this.signals=[];this.features={bridges:0,trees:0,buildings:0};this.builder=new SceneBuilder();this.heightCache=new Map();this.random=rng(this.seed);}
- baseHeight(x,z){const w=this.def,r=Math.hypot(x/w.rx,z/w.rz);const n=fbm(x*.00065,z*.00065,this.seed),detail=fbm(x*.004,z*.004,this.seed+43,3);const bank=smooth(.72,1.13,r);let h=w.water-16+bank*68;const mountain=smooth(1.05,1.72,r);let ridge=Math.pow(Math.abs(n-.48)*2.3,.8)*.60+detail*.42;h+=mountain*ridge*w.mountains;h+=bank*(detail-.45)*18;
+ constructor(def,editor={},preparedTerrain=null){this.def=def;this.editor={seed:def.seed,generationVersion:GENERATOR_VERSION,generation:{relief:1,vegetation:1,erosion:.65},objects:[],heightEdits:[],stations:[],customTrack:null,electrified:true,...editor};this.seed=this.editor.seed;this.terrain=this.editor.generationVersion===2?null:(preparedTerrain||new TerrainField(def,this.seed,this.editor.generation).prepare());this.network=new RailNetwork(def,this.editor.customTrack,{seed:this.seed,generationVersion:this.editor.generationVersion,terrain:this.terrain,generation:this.editor.generation});this.stations=makeStations(this.network,def,this.editor.stations);this.batches=[];this.signals=[];this.viewpoints=[];this.features={bridges:0,trees:0,buildings:0,shrubs:0,flowers:0,landmarks:0,cuttings:0};this.builder=new SceneBuilder();this.heightCache=new Map();this.random=rng(this.seed);}
+ static async create(def,editor={}) {
+  if(editor.generationVersion===2||typeof Worker==='undefined'||globalThis.RAILBOUND_STANDALONE)return new RailwayWorld(def,editor);
+  const terrain=new TerrainField(def,editor.seed||def.seed,editor.generation);
+  try {
+   const data=await new Promise((resolve,reject)=>{
+    const worker=new Worker('src/generation-worker.js',{type:'module'});
+    const timer=setTimeout(()=>{worker.terminate();reject(new Error('Terrain worker timed out'));},30000);
+    const finish=(fn,value)=>{clearTimeout(timer);worker.terminate();fn(value);};
+    worker.onmessage=e=>e.data.error?finish(reject,new Error(e.data.error)):finish(resolve,e.data);
+    worker.onerror=e=>finish(reject,new Error(e.message));
+    worker.postMessage({def,seed:terrain.seed,options:terrain.options});
+   });
+   terrain.heights=data.heights;terrain.flow=data.flow;terrain.stats=data.stats;terrain.execution='worker';
+  } catch {terrain.prepare();}
+  return new RailwayWorld(def,editor,terrain);
+ }
+ baseHeight(x,z){if(this.terrain){let h=this.terrain.height(x,z);for(const e of this.editor.heightEdits){const d=Math.hypot(x-e.x,z-e.z)/e.radius;if(d<1)h+=e.delta*(1-d*d)**2;}return h;}const w=this.def,r=Math.hypot(x/w.rx,z/w.rz);const n=fbm(x*.00065,z*.00065,this.seed),detail=fbm(x*.004,z*.004,this.seed+43,3);const bank=smooth(.72,1.13,r);let h=w.water-16+bank*68;const mountain=smooth(1.05,1.72,r);let ridge=Math.pow(Math.abs(n-.48)*2.3,.8)*.60+detail*.42;h+=mountain*ridge*w.mountains;h+=bank*(detail-.45)*18;
   if(w.theme==='canyon'){h=w.water-18+bank*86+mountain*(Math.floor(n*11)/11*.6+detail*.3)*w.mountains;}
   if(w.theme==='metro')h=w.water-8+bank*35+mountain*n*120;
   if(w.theme==='sakura')h=w.water-8+bank*42+mountain*ridge*w.mountains;
   for(const e of this.editor.heightEdits){const d=Math.hypot(x-e.x,z-e.z)/e.radius;if(d<1)h+=e.delta*(1-d*d)**2;}
   return h;
  }
- height(x,z){let h=this.baseHeight(x,z);const near=this.network.nearest(x,z,38);if(near){const bridge=near.p[1]-h>13;if(!bridge){const target=near.p[1]-.38;h=lerp(target,h,smooth(4.0,32,near.distance));}}
+ height(x,z){let h=this.baseHeight(x,z);const near=this.network.nearest(x,z,this.terrain?70:38);if(near){const bridge=near.p[1]-h>13;if(!bridge){const target=near.p[1]-.38;h=lerp(target,h,smooth(this.terrain?14:4,this.terrain?60:32,near.distance));}}
   for(const st of this.stations){const p=this.network.edges.get(st.edge).at(st.s-60),dx=x-p.p[0],dz=z-p.p[2];const along=dx*p.f[0]+dz*p.f[2],across=dx*p.right[0]+dz*p.right[2];if(across>1&&across<100&&Math.abs(along)<150){const t=smooth(100,150,Math.abs(along))*1+smooth(55,100,across);h=lerp(p.p[1]-.4,h,clamp(t,0,1));}}
   return h;
  }
- async build(onProgress=()=>{}){onProgress('Shaping terrain',.12);await new Promise(r=>setTimeout(r,0));this.buildTerrain();onProgress('Laying rail and bridges',.36);await new Promise(r=>setTimeout(r,0));this.buildTracks();onProgress('Building stations and villages',.56);await new Promise(r=>setTimeout(r,0));this.buildStations();this.buildTownscapes();onProgress('Planting forests',.73);await new Promise(r=>setTimeout(r,0));this.buildVegetation();this.buildDecorations();this.buildWater();this.batches=this.builder.finish();onProgress('Preparing the railway',.92);return this;}
+ async build(onProgress=()=>{}){onProgress('Shaping terrain',.12);await new Promise(r=>setTimeout(r,0));if(this.terrain)await buildExpeditionTerrain(this,onProgress);else this.buildTerrain();onProgress('Laying rail and bridges',.36);await new Promise(r=>setTimeout(r,0));this.buildTracks();if(this.terrain)buildCivilEngineering(this);onProgress('Building stations and villages',.56);await new Promise(r=>setTimeout(r,0));this.buildStations();this.buildTownscapes();onProgress('Planting forests',.73);await new Promise(r=>setTimeout(r,0));if(this.terrain){await buildEcosystem(this,onProgress);buildLandmarks(this);}else this.buildVegetation();this.buildDecorations();this.buildWater();this.batches=this.builder.finish();onProgress('Preparing the railway',.92);return this;}
  buildTerrain(){const b=this.builder,w=this.def,span=Math.max(w.rx,w.rz)*2.8,chunk=span/8,N=24;for(let iz=-8;iz<8;iz++)for(let ix=-8;ix<8;ix++){const verts=[],inds=[],x0=ix*chunk,z0=iz*chunk,step=chunk/N;for(let z=0;z<=N;z++)for(let x=0;x<=N;x++){const wx=x0+x*step,wz=z0+z*step,h=this.height(wx,wz);const e=5,n=norm([this.height(wx-e,wz)-this.height(wx+e,wz),2*e,this.height(wx,wz-e)-this.height(wx,wz+e)]);verts.push(wx,h,wz,...n,wx*.01,wz*.01);}for(let z=0;z<N;z++)for(let x=0;x<N;x++){const i=z*(N+1)+x;inds.push(i,i+N+1,i+1,i+1,i+N+1,i+N+2);}const center=[x0+chunk/2,this.baseHeight(x0+chunk/2,z0+chunk/2),z0+chunk/2];const batch=b.mesh(new Geometry(verts,inds),center,chunk*1.8,[1,.95,0,0]);batch.maxDistance=15000;}}
- buildWater(){const w=this.def,b=this.builder;const mesh=new MeshBuilder();const s=Math.max(w.rx,w.rz)*2.5;mesh.quad([-s,w.water,s],[s,w.water,s],[s,w.water,-s],[-s,w.water,-s],[0,1,0]);const batch=b.mesh(mesh.geometry(),[0,w.water,0],s*1.5,[2,.12,.1,0],hex(w.waterColor));batch.castShadow=false;batch.maxDistance=14000;}
+ buildWater(){const w=this.def,b=this.builder;const mesh=new MeshBuilder();const s=this.terrain?this.terrain.half:Math.max(w.rx,w.rz)*2.5;mesh.quad([-s,w.water,s],[s,w.water,s],[s,w.water,-s],[-s,w.water,-s],[0,1,0]);const batch=b.mesh(mesh.geometry(),[0,w.water,0],s*1.5,[2,.12,.1,0],hex(w.waterColor));batch.castShadow=false;batch.maxDistance=14000;}
  railCross(p,offset,y){return [p.p[0]+p.right[0]*offset,p.p[1]+y,p.p[2]+p.right[2]*offset];}
  buildTracks(){const b=this.builder,w=this.def;const electrified=this.editor.electrified;
   for(const edge of this.network.edges.values()){

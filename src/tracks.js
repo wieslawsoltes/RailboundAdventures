@@ -1,3 +1,4 @@
+import {TerrainField, surveyRoute} from './generation.js';
 import {clamp,lerp,mix3,norm,sub,add,mul,cross,length,catmull,mod,TAU} from './math.js';
 /** Arc-length parameterized, sampled railway edges. Drawing and physics use the same centerline. */
 export class TrackEdge {
@@ -8,13 +9,33 @@ export class TrackEdge {
 }
 function splineLoop(points,spacing=3){const result=[];for(let i=0;i<points.length;i++){const a=points[mod(i-1,points.length)],b=points[i],c=points[(i+1)%points.length],d=points[(i+2)%points.length],n=Math.max(8,Math.ceil(length(sub(c,b))/spacing));for(let j=0;j<n;j++)result.push(catmull(a,b,c,d,j/n));}result.push([...result[0]]);return result;}
 export class RailNetwork {
- constructor(world,customPoints=null){this.world=world;this.switchBranch=false;this.edges=new Map();this.spatial=new Map();this.cell=100;let controls;
+ constructor(world,customPoints=null,options={}){this.world=world;this.switchBranch=false;this.edges=new Map();this.spatial=new Map();this.cell=100;let controls;
   if(customPoints?.length>=4){controls=customPoints.map(p=>[p.x,p.y,p.z]);}
+  else if(options.generationVersion!==2){controls=surveyRoute(world,options.terrain||new TerrainField(world,options.seed||world.seed,options.generation));}
   else{controls=[];for(let i=0;i<14;i++){const t=i/14*TAU;const radius=1+.085*Math.sin(t*3+.7)+.055*Math.cos(t*5);controls.push([Math.sin(t)*world.rx*radius,world.railY+Math.sin(t*2+.2)*world.gradeHeight+Math.cos(t*3)*world.gradeHeight*.2,Math.cos(t)*world.rz*radius]);}}
-  this.controls=controls.map(p=>({x:p[0],y:p[1],z:p[2]}));const all=splineLoop(controls);const a=Math.floor(all.length*.24),b=Math.floor(all.length*.43);const main=new TrackEdge('main',all.slice(a,b+1),world.limit);this.edges.set('approach',new TrackEdge('approach',all.slice(0,a+1),world.limit));this.edges.set('main',main);this.edges.set('return',new TrackEdge('return',all.slice(b),world.limit));
+  this.controls=controls.map(p=>({x:p[0],y:p[1],z:p[2]}));const all=splineLoop(controls);
+  if(options.generationVersion!==2&&!customPoints){
+   const terrain=options.terrain||new TerrainField(world,options.seed||world.seed,options.generation);
+   let best=0,score=Infinity;const count=all.length-1;
+   for(let i=0;i<count;i+=32){const p=all[i],q=all[(i+64)%count],h=terrain.height(p[0],p[2]),cost=Math.abs(p[1]-h-3)+Math.abs(q[1]-terrain.height(q[0],q[2])-3)*.6;
+    if(cost<score){best=i;score=cost;}}
+   const rotated=all.slice(0,count);all.length=0;for(let i=0;i<count;i++)all.push(rotated[(i+best)%count]);all.push([...all[0]]);
+  }
+  const a=Math.floor(all.length*.24),b=Math.floor(all.length*.43);const main=new TrackEdge('main',all.slice(a,b+1),world.limit);this.edges.set('approach',new TrackEdge('approach',all.slice(0,a+1),world.limit));this.edges.set('main',main);this.edges.set('return',new TrackEdge('return',all.slice(b),world.limit));
   const p0=all[a],p1=all[b],f0=norm(sub(all[a+2],all[a])),f1=norm(sub(all[b],all[b-2]));const span=length(sub(p1,p0));const branch=[];const c0=add(p0,mul(f0,span*.45)),c1=sub(p1,mul(f1,span*.45));for(let j=0;j<=Math.ceil(span/3);j++){const t=j/Math.ceil(span/3),u=1-t;branch.push([0,1,2].map(k=>u*u*u*p0[k]+3*u*u*t*c0[k]+3*u*t*t*c1[k]+t*t*t*p1[k]));}
+  if(options.generationVersion!==2&&!customPoints){
+   // A genuine scenic alternative follows the same corridor rather than a
+   // straight chord through the middle of every world. Zero endpoint derivative.
+   branch.length=0;
+   for(let j=a;j<=b;j++) {const t=(j-a)/(b-a),p=all[j],before=all[Math.max(0,j-1)],after=all[Math.min(all.length-1,j+1)],dx=after[0]-before[0],dz=after[2]-before[2],len=Math.hypot(dx,dz)||1;
+    const offset=Math.sin(Math.PI*t)**2*(world.theme==='canyon'?200:130);
+    branch.push([p[0]-dz/len*offset,p[1],p[2]+dx/len*offset]);
+   }
+  }
   this.edges.set('branch',new TrackEdge('branch',branch,Math.min(75,world.limit)));this.totalLength=this.edges.get('approach').length+main.length+this.edges.get('return').length;
   for(const e of this.edges.values())for(let s=0;s<=e.length;s+=15){const p=e.at(Math.min(s,e.length));this._index(p);}this.junction=this.edges.get('approach').at(this.edges.get('approach').length).p;
+  const xs=all.map(p=>p[0]),zs=all.map(p=>p[2]);this.bounds={minX:Math.min(...xs)-500,maxX:Math.max(...xs)+500,minZ:Math.min(...zs)-500,maxZ:Math.max(...zs)+500};
+  this.generationVersion=options.generationVersion===2?2:3;
  }
  _index(p){const key=`${Math.floor(p.p[0]/this.cell)},${Math.floor(p.p[2]/this.cell)}`;if(!this.spatial.has(key))this.spatial.set(key,[]);this.spatial.get(key).push(p);}
  next(id){return id==='approach'?(this.switchBranch?'branch':'main'):id==='return'?'approach':'return';}

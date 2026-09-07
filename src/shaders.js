@@ -38,8 +38,27 @@ export const WGSL_MAIN = WGSL_COMMON+/* wgsl */`
 fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.5)+vec2f(.5);if(any(uv<vec2f(.002))||any(uv>vec2f(.998))||p.z<0.||p.z>1.||u.headDir.w<.5){return 1.;}let bias=.00012+.00045*(1.-max(0.,dot(n,u.sunDay.xyz)));var s=0.;let size=vec2f(textureDimensions(shadow));for(var x=-1;x<=1;x++){for(var y=-1;y<=1;y++){s+=textureSampleCompareLevel(shadow,shadowSampler,uv+vec2f(f32(x),f32(y))/size,p.z-bias);}}return s/9.;}
 @fragment fn fs(v:Vout)->@location(0) vec4f {
  var n=normalize(v.normal);let view=normalize(u.cameraTime.xyz-v.world);var col=pow(v.color.rgb,vec3f(2.2));let kind=v.props.x;var rough=v.props.y;var metal=v.props.z;var emissive=v.props.w;
- if(kind>.5&&kind<1.5){let terrainNoise=fbm(v.world.xz*.004);let detail=noise(v.world.xz*.7);let grass=pow(u.ground.rgb,vec3f(2.2))*(.70+terrainNoise*.6+detail*.11);let rock=pow(u.rock.rgb,vec3f(2.2))*(.6+terrainNoise*.7);let slope=1.-n.y;col=mix(grass,rock,smoothstep(.16,.48,slope));if(u.env.z>2.5&&u.env.z<3.5){col=mix(grass,rock,smoothstep(.07,.32,slope));col*=.82+.18*sin(v.world.y*.09+terrainNoise*2.);}
- let snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,v.world.y+(terrainNoise-.5)*110.)*smoothstep(.38,.72,n.y);col=mix(col,vec3f(.82,.85,.86),snow);col*=1.-u.env.y*.19;rough=.91;n=normalize(n+vec3f((noise(v.world.xz*.41)-.5)*.045,0,(noise(v.world.zx*.53)-.5)*.045));}
+ if(kind>.5&&kind<1.5){
+  let terrainNoise=fbm(v.world.xz*.0023);let moisture=clamp(v.uv.x,0.,1.);let drainage=clamp(v.uv.y,0.,1.);
+  let blend=pow(abs(n),vec3f(4.));let weights=blend/max(dot(blend,vec3f(1.)),.001);
+  let grain=noise(v.world.yz*.24)*weights.x+noise(v.world.xz*.24)*weights.y+noise(v.world.xy*.24)*weights.z;
+  let detail=noise(v.world.xz*1.3);
+  var grass=pow(u.ground.rgb,vec3f(2.2))*(.65+terrainNoise*.65+grain*.14);
+  let dry=vec3f(.29,.235,.125);grass=mix(grass,dry,(1.-moisture)*.24);
+  var rock=pow(u.rock.rgb,vec3f(2.2))*(.55+grain*.55+terrainNoise*.25);
+  let slope=1.-max(0.,n.y);col=mix(grass,rock,smoothstep(.13,.45,slope));
+  col=mix(col,rock*.80,drainage*smoothstep(.02,.22,slope)*.32);
+  if(u.env.z>2.5&&u.env.z<3.5){
+   let strata=.88+.08*sin(v.world.y*.31+terrainNoise*4.)+.045*sin(v.world.y*1.13);
+   col=mix(grass*vec3f(1.08,.96,.8),rock,smoothstep(.07,.30,slope))*strata;
+  }
+  if(u.env.z>4.5&&u.env.z<5.5){col=mix(col,vec3f(.19,.11,.17),smoothstep(.51,.68,terrainNoise)*(1.-smoothstep(.05,.22,slope))*.3);}
+  let shore=(1.-smoothstep(u.env.w+1.,u.env.w+12.,v.world.y))*(1.-smoothstep(.05,.28,slope));
+  col=mix(col,vec3f(.30,.28,.20),shore*.65);col*=.94+detail*.12;
+  let snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,v.world.y+(terrainNoise-.5)*110.)*smoothstep(.38,.72,n.y);
+  col=mix(col,vec3f(.82,.85,.86),snow);col*=1.-u.env.y*.19;rough=.91;
+  n=normalize(n+vec3f((noise(v.world.xz*.41)-.5)*.075,0.,(noise(v.world.zx*.53)-.5)*.075));
+ }
  if(kind>5.5&&kind<6.5){col*=.89+noise((v.world.xz+vec2f(v.world.y*.71,v.world.y*.31))*5.)*.16;}
  if(kind>6.5&&kind<7.5){let grit=hash(floor(v.world.xz*23.));col*=.7+grit*.6;}
  let light=u.sunDay.xyz;let ndl=max(0.,dot(n,light));let visibility=shadeShadow(v.light,n);let hemi=mix(vec3f(.09,.105,.1),vec3f(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);
@@ -50,6 +69,7 @@ fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.
  if(kind>1.5&&kind<2.5){let t=u.cameraTime.w;let wave=sin(v.world.x*.11+t*.9)*.05+sin(v.world.z*.17-t*.7)*.035; n=normalize(vec3f(wave,1.,cos(v.world.z*.09+t*.7)*.06));let fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);let reflection=atmosphere(reflect(-view,n),true);let sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;color=mix(pow(v.color.rgb,vec3f(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){color*=.7+noise(v.world.xz*3.1+vec2f(v.world.y*1.7))*.38;color+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}
  if(u.headPos.w>.01){let delta=v.world-u.headPos.xyz;let d=length(delta);let cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));color+=col*vec3f(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
+ if(kind>8.5&&kind<9.5){let foam=.64+.36*noise(vec2f(v.world.x*1.2,v.world.y*.24+u.cameraTime.w*2.8));color=mix(color,vec3f(.64,.79,.82)*foam,.7);}
  color+=col*emissive;
  let distance=length(v.world-u.cameraTime.xyz);let heightFog=exp(-max(v.world.y-u.env.w,0.)*.00085);let fog=1.-exp(-distance*u.fog.w*heightFog);color=mix(color,atmosphere(normalize(v.world-u.cameraTime.xyz),false),clamp(fog,0.,.99));
  return vec4f(aces(color),select(1.,v.color.a,kind>7.5));
@@ -81,7 +101,27 @@ export const GLSL_MAIN_FS=`#version 300 es\n`+GLSL_COMMON+`
 precision highp sampler2DShadow;uniform sampler2DShadow shadowTex;in vec3 world;in vec3 normal;in vec4 color;in vec4 props;in vec2 uv;in vec4 lightPos;out vec4 outColor;
 float shadeShadow(vec4 lp,vec3 n){vec3 p=lp.xyz/lp.w;vec2 uv=p.xy*.5+.5;float z=p.z*.5+.5;if(any(lessThan(uv,vec2(.002)))||any(greaterThan(uv,vec2(.998)))||z<0.||z>1.||u.headDir.w<.5)return 1.;float bias=.00012+.00045*(1.-max(0.,dot(n,u.sunDay.xyz)));float s=0.;vec2 size=vec2(textureSize(shadowTex,0));for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)s+=texture(shadowTex,vec3(uv+vec2(float(x),float(y))/size,z-bias));return s/9.;}
 void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=pow(color.rgb,vec3(2.2));float kind=props.x,rough=props.y,metal=props.z,emissive=props.w;
- if(kind>.5&&kind<1.5){float terrainNoise=fbm(world.xz*.004),detail=noise(world.xz*.7);vec3 grass=pow(u.ground.rgb,vec3(2.2))*(.70+terrainNoise*.6+detail*.11),rock=pow(u.rock.rgb,vec3(2.2))*(.6+terrainNoise*.7);float slope=1.-n.y;col=mix(grass,rock,smoothstep(.16,.48,slope));if(u.env.z>2.5&&u.env.z<3.5){col=mix(grass,rock,smoothstep(.07,.32,slope));col*=.82+.18*sin(world.y*.09+terrainNoise*2.);}float snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,world.y+(terrainNoise-.5)*110.)*smoothstep(.38,.72,n.y);col=mix(col,vec3(.82,.85,.86),snow);col*=1.-u.env.y*.19;rough=.91;n=normalize(n+vec3((noise(world.xz*.41)-.5)*.045,0,(noise(world.zx*.53)-.5)*.045));}
+ if(kind>.5&&kind<1.5){
+  float terrainNoise=fbm(world.xz*.0023);float moisture=clamp(uv.x,0.,1.);float drainage=clamp(uv.y,0.,1.);
+  vec3 blend=pow(abs(n),vec3(4.));vec3 weights=blend/max(dot(blend,vec3(1.)),.001);
+  float grain=noise(world.yz*.24)*weights.x+noise(world.xz*.24)*weights.y+noise(world.xy*.24)*weights.z;
+  float detail=noise(world.xz*1.3);
+  vec3 grass=pow(u.ground.rgb,vec3(2.2))*(.65+terrainNoise*.65+grain*.14);
+  vec3 dry=vec3(.29,.235,.125);grass=mix(grass,dry,(1.-moisture)*.24);
+  vec3 rock=pow(u.rock.rgb,vec3(2.2))*(.55+grain*.55+terrainNoise*.25);
+  float slope=1.-max(0.,n.y);col=mix(grass,rock,smoothstep(.13,.45,slope));
+  col=mix(col,rock*.80,drainage*smoothstep(.02,.22,slope)*.32);
+  if(u.env.z>2.5&&u.env.z<3.5){
+   float strata=.88+.08*sin(world.y*.31+terrainNoise*4.)+.045*sin(world.y*1.13);
+   col=mix(grass*vec3(1.08,.96,.8),rock,smoothstep(.07,.30,slope))*strata;
+  }
+  if(u.env.z>4.5&&u.env.z<5.5){col=mix(col,vec3(.19,.11,.17),smoothstep(.51,.68,terrainNoise)*(1.-smoothstep(.05,.22,slope))*.3);}
+  float shore=(1.-smoothstep(u.env.w+1.,u.env.w+12.,world.y))*(1.-smoothstep(.05,.28,slope));
+  col=mix(col,vec3(.30,.28,.20),shore*.65);col*=.94+detail*.12;
+  float snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,world.y+(terrainNoise-.5)*110.)*smoothstep(.38,.72,n.y);
+  col=mix(col,vec3(.82,.85,.86),snow);col*=1.-u.env.y*.19;rough=.91;
+  n=normalize(n+vec3((noise(world.xz*.41)-.5)*.075,0.,(noise(world.zx*.53)-.5)*.075));
+ }
  if(kind>5.5&&kind<6.5)col*=.89+noise((world.xz+vec2(world.y*.71,world.y*.31))*5.)*.16;
  if(kind>6.5&&kind<7.5)col*=.7+hash(floor(world.xz*23.))*.6;
  vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(lightPos,n);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);vec3 spec=F*D*.23;vec3 result=col*(hemi+sun*(1.-metal*.65))+spec*sun;
@@ -89,6 +129,7 @@ void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=
  if(kind>1.5&&kind<2.5){float t=u.cameraTime.w,wave=sin(world.x*.11+t*.9)*.05+sin(world.z*.17-t*.7)*.035;n=normalize(vec3(wave,1.,cos(world.z*.09+t*.7)*.06));float fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);vec3 reflection=atmosphere(reflect(-view,n),true);float sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;result=mix(pow(color.rgb,vec3(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){result*=.7+noise(world.xz*3.1+vec2(world.y*1.7))*.38;result+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}
  if(u.headPos.w>.01){vec3 delta=world-u.headPos.xyz;float d=length(delta),cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));result+=col*vec3(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
+ if(kind>8.5&&kind<9.5){float foam=.64+.36*noise(vec2(world.x*1.2,world.y*.24+u.cameraTime.w*2.8));result=mix(result,vec3(.64,.79,.82)*foam,.7);}
  result+=col*emissive;float distance=length(world-u.cameraTime.xyz),heightFog=exp(-max(world.y-u.env.w,0.)*.00085),f=1.-exp(-distance*u.fog.w*heightFog);result=mix(result,atmosphere(normalize(world-u.cameraTime.xyz),false),clamp(f,0.,.99));outColor=vec4(aces(result),kind>7.5?color.a:1.);}`;
 export const GLSL_SHADOW_VS=`#version 300 es\n`+GLSL_COMMON+`layout(location=0) in vec3 aPos;layout(location=3) in mat4 model;void main(){gl_Position=u.lightVP*model*vec4(aPos,1);}`;
 export const GLSL_SHADOW_FS=`#version 300 es\nprecision highp float;void main(){}`;
