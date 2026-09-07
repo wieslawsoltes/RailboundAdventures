@@ -1,0 +1,54 @@
+name: Finish night display readability
+on:
+  push:
+    branches: [feat/cinematic-journeys]
+    paths: [.github/workflows/import-cinematic.yml]
+permissions:
+  contents: write
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/cinematic-journeys
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Preserve low-light values instead of subtracting a black offset
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('src/postprocess.js');s=p.read_text()
+          old='c=clamp((c-vec3f(.18))*post.values0.w+vec3f(.18),vec3f(0),vec3f(1));'
+          new='c=pow(clamp(c,vec3f(0),vec3f(1)),vec3f(post.values0.w));'
+          assert s.count(old)==1
+          s=s.replace(old,new)
+          old='c=clamp((c-vec3(.18))*look.x+vec3(.18),0.,1.);'
+          new='c=pow(clamp(c,vec3(0),vec3(1)),vec3(look.x));'
+          assert s.count(old)==1
+          p.write_text(s.replace(old,new))
+          p=Path('src/shaders.js');s=p.read_text()
+          assert s.count('mix(.06,1.,u.sunDay.w)')==2
+          p.write_text(s.replace('mix(.06,1.,u.sunDay.w)','mix(.12,1.,u.sunDay.w)'))
+          p=Path('tests/night-display.test.js')
+          p.write_text("import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport {POST_WGSL,LOOKS} from '../src/postprocess.js';\nimport {readFileSync} from 'node:fs';\ntest('cinematic contrast preserves positive night radiance',()=>{for(const look of Object.values(LOOKS))for(const x of [.0001,.001,.005,.01,.1,1]){const y=Math.pow(x,look.contrast);assert.ok(y>0&&y<=1);}assert.ok(POST_WGSL.includes('pow(clamp(c,vec3f(0),vec3f(1)),vec3f(post.values0.w))'));const code=readFileSync(new URL('../src/postprocess.js',import.meta.url),'utf8');assert.ok(code.includes('pow(clamp(c,vec3(0),vec3(1)),vec3(look.x))'));});\n")
+          p=Path('docs/CINEMATIC-JOURNEYS.md');s=p.read_text();s=s.replace('a vignette and optional grain. Grain defaults to zero.', 'a vignette and optional grain. Grain defaults to zero. Contrast preserves positive low-light values rather than subtracting a black offset, and night ambient light keeps train silhouettes legible.')
+          p.write_text(s)
+          p=Path('tools/verify_cinematic.py');s=p.read_text();old="            render(page,region+'-atmosphere')";assert s.count(old)==1
+          s=s.replace(old,"            _,scene=render(page,region+'-atmosphere')\n            if region=='nordic':\n                check('night grading retains visible shadow detail',sum(ImageStat.Stat(scene).mean)/3>5,ImageStat.Stat(scene).mean)")
+          p.write_text(s)
+          PY
+      - name: Verify and rebuild
+        run: |
+          npm test
+          npm run build:pages
+      - name: Commit validated low-light corrections
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/postprocess.js src/shaders.js tests/night-display.test.js tools/verify_cinematic.py docs/CINEMATIC-JOURNEYS.md dist
+          git diff --cached --check
+          git commit -m 'fix: retain night shadow detail with zero-preserving display contrast'
+          git push origin HEAD:feat/cinematic-journeys
