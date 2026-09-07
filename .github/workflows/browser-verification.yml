@@ -31,15 +31,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Install browser test dependencies
+      - name: Install browser and software Vulkan dependencies
         run: |
           python -m pip install playwright==1.62.0 pillow==11.3.0
           python -m playwright install --with-deps chromium
+          sudo apt-get install -y libvulkan1 mesa-vulkan-drivers xvfb xauth
       - name: Verify live rendering, driving, mobile controls and offline startup
         env:
           PAGE_URL: https://wieslawsoltes.github.io/RailboundAdventures/
           BACKEND: ${{ matrix.backend }}
-        run: python -u tools/verify_browser.py
+        run: xvfb-run -a -s '-screen 0 1600x1200x24' python -u tools/verify_browser.py
       - name: Preserve screenshots and machine-readable results
         if: always()
         uses: actions/upload-artifact@v4
