@@ -1,4 +1,4 @@
-"""Verify and restore the original game source without accepting unsafe paths."""
+"""Verify and restore original source, then instrument CI startup failures."""
 from pathlib import Path, PurePosixPath
 import hashlib
 import io
@@ -16,14 +16,18 @@ with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as archive:
         assert path.parts and path.parts[0] not in ('.git', '.github', '.bootstrap')
         assert member.isfile() or member.isdir(), 'Only regular files and directories are permitted'
     archive.extractall('.', filter='data')
-print('Verified source archive:', expected)
+print('Verified source archive:', expected, flush=True)
 
-# Use the complete Chromium distribution, not the reduced headless shell.
-# Keep diagnostics in the editable test harness so CI failures are actionable.
 test = Path('tools/integration_browser.py')
 source = test.read_text()
-source = source.replace("executable_path=os.environ.get('CHROMIUM_EXECUTABLE')", "executable_path=os.environ.get('CHROMIUM_EXECUTABLE') or p.chromium.executable_path")
-source = source.replace("page.on('pageerror',lambda e:errors.append(str(e)))", "page.on('pageerror',lambda e:(errors.append(str(e)),print('PAGE ERROR:',str(e),flush=True)))")
-source = source.replace("page.on('console',lambda m:console_errors.append(m.text) if m.type=='error' else None)", "page.on('console',lambda m:(console_errors.append(m.text),print('CONSOLE ERROR:',m.text,flush=True)) if m.type=='error' else None)")
-source = source.replace("print('FAILED',exc)", "print('FAILED',exc,flush=True);print('STARTUP DIAGNOSTICS',page.evaluate('({ready:globalThis.railbound?.ready,renderer:globalThis.railbound?.renderer.kind,lost:globalThis.railbound?.renderer.lost,error:globalThis.railbound?.renderer.lastError,fatal:document.getElementById(\"fatal-message\")?.textContent})'),flush=True)")
+replacements = [
+    ("executable_path=os.environ.get('CHROMIUM_EXECUTABLE')", "executable_path=os.environ.get('CHROMIUM_EXECUTABLE') or p.chromium.executable_path"),
+    ("page.on('pageerror',lambda e: errors.append(str(e)))", "page.on('pageerror',lambda e: (errors.append(str(e)),print('PAGE ERROR:',str(e),flush=True)))"),
+    ("page.on('console',lambda m: errors.append(m.text) if m.type=='error' else None)", "page.on('console',lambda m: (errors.append(m.text),print('CONSOLE ERROR:',m.text,flush=True)) if m.type=='error' else None)"),
+    ("page.wait_for_function('railbound?.ready',timeout=90000)", "page.wait_for_function('globalThis.railbound?.ready || document.getElementById(\\\"fatal-message\\\")?.textContent',timeout=90000)\n        startup=page.evaluate('({ready:globalThis.railbound?.ready,renderer:globalThis.railbound?.renderer.kind,fatal:document.getElementById(\\\"fatal-message\\\")?.textContent,secure:isSecureContext,gpu:!!navigator.gpu})')\n        print('STARTUP:',startup,flush=True)\n        if not startup.get('ready'): raise RuntimeError(startup)"),
+    ("print('FAILED',e,flush=True)", "print('FAILED',e,'CAPTURED ERRORS:',errors,flush=True)\n        print('STARTUP DIAGNOSTICS:',page.evaluate('({ready:globalThis.railbound?.ready,renderer:globalThis.railbound?.renderer.kind,fatal:document.getElementById(\\\"fatal-message\\\")?.textContent})'),flush=True)"),
+]
+for old,new in replacements:
+    assert old in source, 'Missing patch target: '+old
+    source=source.replace(old,new)
 test.write_text(source)
