@@ -13,7 +13,7 @@ texture. Four fullscreen-triangle passes extract soft-knee highlights at quarter
 resolution, blur horizontally and vertically, then composite bloom and apply one
 filmic display transform. Linear lighting is not tonemapped independently per
 material. Grading includes four looks, exposure, saturation/contrast/temperature,
-a vignette and optional grain. Grain defaults to zero. The low preset and zero
+a vignette and optional grain. Grain defaults to zero. Contrast preserves positive low-light values rather than subtracting a black offset, and night ambient light keeps train silhouettes legible. The low preset and zero
 bloom setting skip extraction and both blur passes.
 
 WebGL 2 queries `EXT_color_buffer_float`. With float targets it follows the same

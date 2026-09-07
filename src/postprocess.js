@@ -54,7 +54,7 @@ fn aces(c:vec3f)->vec3f {let x=max(c,vec3f(0));return clamp((x*(2.51*x+.03))/(x*
  var c=sampleScene(v.uv)+textureSampleLevel(glow,linearSampler,v.uv,0.).rgb*u.look.x;
  c*=vec3f(1.+u.style.x*.25,1.,1.-u.style.x*.25);
  c=aces(c*u.screen.w);let lum=dot(c,vec3f(.2126,.7152,.0722));c=mix(vec3f(lum),c,u.look.y);
- c=(c-.18)*u.look.z+.18;
+ c=pow(clamp(c,vec3f(0),vec3f(1)),vec3f(u.look.z));
  let q=v.uv*(1.-v.uv);let vig=pow(clamp(q.x*q.y*16.,0.,1.),.28);
  c*=mix(1.,vig,u.look.w);
  c=pow(max(c,vec3f(0)),vec3f(1./2.2));
@@ -73,7 +73,7 @@ const GL_FS={
  extract:GL_COMMON+`void main(){vec2 d=1./screen.xy;vec3 c=(sampleScene(uv+vec2(-1.5,-1.5)*d)+sampleScene(uv+vec2(1.5,-1.5)*d)+sampleScene(uv+vec2(-1.5,1.5)*d)+sampleScene(uv+vec2(1.5,1.5)*d))*.25;float l=max(max(c.r,c.g),c.b),knee=clamp(l-.65,0.,.7);outColor=vec4(c*max(l-1.,knee*knee/1.4)/max(l,.0001),1);}`,
  blurH:GL_COMMON+`void main(){vec2 d=vec2(1,0)/vec2(textureSize(scene,0));vec3 c=sampleScene(uv)*.227027+(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216+(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;outColor=vec4(c,1);}`,
  blurV:GL_COMMON+`void main(){vec2 d=vec2(0,1)/vec2(textureSize(scene,0));vec3 c=sampleScene(uv)*.227027+(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216+(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;outColor=vec4(c,1);}`,
- composite:GL_COMMON+`void main(){vec3 c=sampleScene(uv)+texture(glow,uv).rgb*look.x;c*=vec3(1.+style.x*.25,1.,1.-style.x*.25);c=style.z>.5?aces(c*screen.w):pow(max(c,vec3(0)),vec3(2.2));float lum=dot(c,vec3(.2126,.7152,.0722));c=mix(vec3(lum),c,look.y);c=(c-.18)*look.z+.18;vec2 q=uv*(1.-uv);c*=mix(1.,pow(clamp(q.x*q.y*16.,0.,1.),.28),look.w);c=pow(max(c,vec3(0)),vec3(1./2.2));float grain=fract(sin(dot(gl_FragCoord.xy+screen.z*17.,vec2(12.9898,78.233)))*43758.5453)-.5;outColor=vec4(clamp(c+grain*style.y,0.,1.),1);}`
+ composite:GL_COMMON+`void main(){vec3 c=sampleScene(uv)+texture(glow,uv).rgb*look.x;c*=vec3(1.+style.x*.25,1.,1.-style.x*.25);c=style.z>.5?aces(c*screen.w):pow(max(c,vec3(0)),vec3(2.2));float lum=dot(c,vec3(.2126,.7152,.0722));c=mix(vec3(lum),c,look.y);c=pow(clamp(c,vec3(0),vec3(1)),vec3(look.z));vec2 q=uv*(1.-uv);c*=mix(1.,pow(clamp(q.x*q.y*16.,0.,1.),.28),look.w);c=pow(max(c,vec3(0)),vec3(1./2.2));float grain=fract(sin(dot(gl_FragCoord.xy+screen.z*17.,vec2(12.9898,78.233)))*43758.5453)-.5;outColor=vec4(clamp(c+grain*style.y,0.,1.),1);}`
 };
 
 export class PostProcessor {

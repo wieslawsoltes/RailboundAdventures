@@ -95,7 +95,7 @@ fn aces(c:vec3f)->vec3f {let x=max(c,vec3f(0));return clamp((x*(2.51*x+.03))/(x*
  var c=sampleScene(v.uv)+textureSampleLevel(glow,linearSampler,v.uv,0.).rgb*u.look.x;
  c*=vec3f(1.+u.style.x*.25,1.,1.-u.style.x*.25);
  c=aces(c*u.screen.w);let lum=dot(c,vec3f(.2126,.7152,.0722));c=mix(vec3f(lum),c,u.look.y);
- c=(c-.18)*u.look.z+.18;
+ c=pow(clamp(c,vec3f(0),vec3f(1)),vec3f(u.look.z));
  let q=v.uv*(1.-v.uv);let vig=pow(clamp(q.x*q.y*16.,0.,1.),.28);
  c*=mix(1.,vig,u.look.w);
  c=pow(max(c,vec3f(0)),vec3f(1./2.2));
@@ -114,7 +114,7 @@ const GL_FS={
  extract:GL_COMMON+`void main(){vec2 d=1./screen.xy;vec3 c=(sampleScene(uv+vec2(-1.5,-1.5)*d)+sampleScene(uv+vec2(1.5,-1.5)*d)+sampleScene(uv+vec2(-1.5,1.5)*d)+sampleScene(uv+vec2(1.5,1.5)*d))*.25;float l=max(max(c.r,c.g),c.b),knee=clamp(l-.65,0.,.7);outColor=vec4(c*max(l-1.,knee*knee/1.4)/max(l,.0001),1);}`,
  blurH:GL_COMMON+`void main(){vec2 d=vec2(1,0)/vec2(textureSize(scene,0));vec3 c=sampleScene(uv)*.227027+(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216+(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;outColor=vec4(c,1);}`,
  blurV:GL_COMMON+`void main(){vec2 d=vec2(0,1)/vec2(textureSize(scene,0));vec3 c=sampleScene(uv)*.227027+(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216+(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;outColor=vec4(c,1);}`,
- composite:GL_COMMON+`void main(){vec3 c=sampleScene(uv)+texture(glow,uv).rgb*look.x;c*=vec3(1.+style.x*.25,1.,1.-style.x*.25);c=style.z>.5?aces(c*screen.w):pow(max(c,vec3(0)),vec3(2.2));float lum=dot(c,vec3(.2126,.7152,.0722));c=mix(vec3(lum),c,look.y);c=(c-.18)*look.z+.18;vec2 q=uv*(1.-uv);c*=mix(1.,pow(clamp(q.x*q.y*16.,0.,1.),.28),look.w);c=pow(max(c,vec3(0)),vec3(1./2.2));float grain=fract(sin(dot(gl_FragCoord.xy+screen.z*17.,vec2(12.9898,78.233)))*43758.5453)-.5;outColor=vec4(clamp(c+grain*style.y,0.,1.),1);}`
+ composite:GL_COMMON+`void main(){vec3 c=sampleScene(uv)+texture(glow,uv).rgb*look.x;c*=vec3(1.+style.x*.25,1.,1.-style.x*.25);c=style.z>.5?aces(c*screen.w):pow(max(c,vec3(0)),vec3(2.2));float lum=dot(c,vec3(.2126,.7152,.0722));c=mix(vec3(lum),c,look.y);c=pow(clamp(c,vec3(0),vec3(1)),vec3(look.z));vec2 q=uv*(1.-uv);c*=mix(1.,pow(clamp(q.x*q.y*16.,0.,1.),.28),look.w);c=pow(max(c,vec3(0)),vec3(1./2.2));float grain=fract(sin(dot(gl_FragCoord.xy+screen.z*17.,vec2(12.9898,78.233)))*43758.5453)-.5;outColor=vec4(clamp(c+grain*style.y,0.,1.),1);}`
 };
 
 class PostProcessor {
@@ -592,7 +592,7 @@ fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.
  }
  if(kind>5.5&&kind<6.5){col*=.89+noise((v.world.xz+vec2f(v.world.y*.71,v.world.y*.31))*5.)*.16;}
  if(kind>6.5&&kind<7.5){let grit=hash(floor(v.world.xz*23.));col*=.7+grit*.6;}
- let light=u.sunDay.xyz;let ndl=max(0.,dot(n,light));let visibility=shadeShadow(v.light,n);let hemi=mix(vec3f(.09,.105,.1),vec3f(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);
+ let light=u.sunDay.xyz;let ndl=max(0.,dot(n,light));let visibility=shadeShadow(v.light,n);let hemi=mix(vec3f(.09,.105,.1),vec3f(.24,.30,.37),n.y*.5+.5)*mix(.12,1.,u.sunDay.w);
  let sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);
  let halfV=normalize(light+view);let ndh=max(0.,dot(n,halfV));let r=max(.06,rough);let alpha=r*r;let a2=alpha*alpha;let den=ndh*ndh*(a2-1.)+1.;let D=a2/(3.14159*den*den+.0001);let F=mix(vec3f(.035),col,metal)+(vec3f(1.)-mix(vec3f(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);let nv=max(.02,dot(n,view));let k=(r+1.)*(r+1.)/8.;
  let G=nv/(nv*(1.-k)+k)*ndl/max(.001,ndl*(1.-k)+k);
@@ -665,7 +665,7 @@ void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=
  }
  if(kind>5.5&&kind<6.5)col*=.89+noise((world.xz+vec2(world.y*.71,world.y*.31))*5.)*.16;
  if(kind>6.5&&kind<7.5)col*=.7+hash(floor(world.xz*23.))*.6;
- vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(lightPos,n);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);float nv=max(.02,dot(n,view)),k=(r+1.)*(r+1.)/8.,G=nv/(nv*(1.-k)+k)*ndl/max(.001,ndl*(1.-k)+k);vec3 spec=F*D*G/max(.04,4.*nv*max(ndl,.02));float cloudShadow=mix(1.,.70,smoothstep(.42,.75,fbm(world.xz*.00032+u.cameraTime.w*.0015))*u.env.x);vec3 result=col*hemi+((vec3(1.)-F)*col*(1.-metal)/3.14159+spec)*sun*3.0*cloudShadow;
+ vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(lightPos,n);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.12,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);float nv=max(.02,dot(n,view)),k=(r+1.)*(r+1.)/8.,G=nv/(nv*(1.-k)+k)*ndl/max(.001,ndl*(1.-k)+k);vec3 spec=F*D*G/max(.04,4.*nv*max(ndl,.02));float cloudShadow=mix(1.,.70,smoothstep(.42,.75,fbm(world.xz*.00032+u.cameraTime.w*.0015))*u.env.x);vec3 result=col*hemi+((vec3(1.)-F)*col*(1.-metal)/3.14159+spec)*sun*3.0*cloudShadow;
  if(kind>2.5&&kind<3.5){vec3 refl=atmosphere(reflect(-view,n),false);float fr=.24+.65*pow(1.-max(0.,dot(n,view)),4.);result=mix(col*.4,refl,fr)+spec*sun*.35;}
  if(kind>1.5&&kind<2.5){float t=u.cameraTime.w,wave=sin(world.x*.11+t*.9)*.05+sin(world.z*.17-t*.7)*.035;n=normalize(vec3(wave,1.,cos(world.z*.09+t*.7)*.06));float fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);vec3 reflection=atmosphere(reflect(-view,n),true);float sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;result=mix(pow(color.rgb,vec3(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){result*=.7+noise(world.xz*3.1+vec2(world.y*1.7))*.38;result+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}

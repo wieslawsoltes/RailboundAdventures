@@ -169,7 +169,9 @@ with sync_playwright() as p:
             page.evaluate('''([hour,weather])=>{const a=railbound;a.paused=true;a.renderEnabled=false;
                 a.env.hour=hour;a.env.weather=weather;a.env.exposure=1.15;
                 a.camera.setMode('chase');a.settings.cinematic.look='cinema';a.applySettings();}''',[hour,weather])
-            render(page,region+'-atmosphere')
+            _,scene=render(page,region+'-atmosphere')
+            if region=='nordic':
+                check('night grading retains visible shadow detail',sum(ImageStat.Stat(scene).mean)/3>5,ImageStat.Stat(scene).mean)
             check(region+' civil structures rebuilt',page.evaluate('railbound.world.viaductSpans.length>0&&railbound.world.features.foundations>0'))
         for width,height in [(390,844),(844,390)]:
             page.set_viewport_size({'width':width,'height':height})
