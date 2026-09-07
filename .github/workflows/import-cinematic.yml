@@ -1,0 +1,93 @@
+name: Finish cinematic review corrections
+on:
+  push:
+    branches: [feat/cinematic-journeys]
+    paths: [.github/workflows/import-cinematic.yml]
+permissions:
+  contents: write
+jobs:
+  finish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/cinematic-journeys
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Address reviewed behavior and geometry regressions
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def replace(path,old,new):
+              p=Path(path);s=p.read_text();assert s.count(old)==1,(path,old,s.count(old));p.write_text(s.replace(old,new))
+          replace('src/world-detail.js','export function buildCivilEngineering(world) {','export function buildCivilEngineering(world,includeBridges=true) {')
+          replace('src/world-detail.js','   if(gap>14) {\n','   if(gap>14) {\n    if(!includeBridges)continue; // New viaduct builder owns bridge geometry.\n')
+          replace('src/world.js','buildExpeditionTerrain, buildEcosystem, buildLandmarks','buildExpeditionTerrain, buildEcosystem, buildLandmarks, buildCivilEngineering')
+          replace('src/world.js','this.buildTracks();onProgress(','this.buildTracks();if(this.terrain)buildCivilEngineering(this,false);onProgress(')
+          replace('src/journey.js','  this.profile=[];let target=limit/3.6,constraint=', '  this.profile=[];let routeGrade=grade,target=limit/3.6,constraint=')
+          replace('src/journey.js','   this.profile.push({distance:d,height:p.p[1],limit:speed,grade:p.grade});','   const travelGrade=p.grade*direction;routeGrade=Math.min(routeGrade,travelGrade);\n   this.profile.push({distance:d,height:p.p[1],limit:speed,grade:travelGrade});')
+          replace('src/journey.js','Math.max(0,d-v*(2+train.cars*.12)),grade,wet)','Math.max(0,d-v*(2+train.cars*.12)),routeGrade,wet)')
+          replace('src/journey.js','  const danger=','  const gradeTo=distance=>Math.min(grade,...this.profile.filter(p=>p.distance<=distance).map(p=>p.grade));\n  const danger=')
+          replace('src/journey.js','Math.max(0,danger-30-v*2),grade,wet)','Math.max(0,danger-30-v*2),gradeTo(danger),wet)')
+          replace('src/journey.js','Math.max(0,d-10-v*(2+train.cars*.12)),grade,wet)','Math.max(0,d-10-v*(2+train.cars*.12)),gradeTo(d),wet)')
+          replace('src/cinematic-ui.js','export function togglePhotoMode(app,on=!app.photoMode){','''/** Capture owned camera state without aliasing mutable vectors. */
+          export function snapshotPhotoCamera(camera){
+           const state={};
+           for(const key of ['mode','fov','distance','azimuth','elevation','cabYaw','cabPitch','freeYaw','freePitch','photoOrbit'])state[key]=camera[key];
+           for(const key of ['position','target','trackAnchor'])state[key]=camera[key]?camera[key].slice():null;
+           return state;
+          }
+          export function restorePhotoCamera(camera,state){
+           camera.setMode(state.mode);
+           for(const [key,value] of Object.entries(state))camera[key]=Array.isArray(value)?value.slice():value;
+           camera.initial=true;
+          }
+          export function togglePhotoMode(app,on=!app.photoMode){''')
+          replace('src/cinematic-ui.js','app.photoState={paused:app.paused,mode:app.camera.mode,fov:app.camera.fov};','app.photoState={paused:app.paused,camera:snapshotPhotoCamera(app.camera)};')
+          replace('src/cinematic-ui.js','app.camera.setMode(app.photoState.mode);app.camera.fov=app.photoState.fov;','restorePhotoCamera(app.camera,app.photoState.camera);')
+          replace('tools/verify_cinematic.py',"railbound.camera.setMode('chase');railbound.paused=false","railbound.camera.setMode('chase');railbound.camera.distance=137;railbound.paused=false")
+          p=Path('tools/verify_cinematic.py');s=p.read_text();old='({mode:railbound.camera.mode,fov:railbound.camera.fov,paused:railbound.paused})';assert s.count(old)==2;p.write_text(s.replace(old,'({mode:railbound.camera.mode,fov:railbound.camera.fov,distance:railbound.camera.distance,paused:railbound.paused})'))
+          p=Path('tests/review-regressions.test.js');assert not p.exists();p.write_text('''import test from 'node:test';
+          import assert from 'node:assert/strict';
+          import {JourneyDirector} from '../src/journey.js';
+          import {snapshotPhotoCamera,restorePhotoCamera} from '../src/cinematic-ui.js';
+          import {CameraRig} from '../src/camera.js';
+          import {buildCivilEngineering} from '../src/world-detail.js';
+          import {SceneBuilder} from '../src/geometry.js';
+          import {readFileSync} from 'node:fs';
+          test('reverse descent uses travel-relative profile grades and earlier braking',()=>{
+           const make=grade=>{
+            const train={speed:-20,grade:0,cars:4,acceleration:0,stock:{maxSpeed:140},controls:{reverser:-1},cursor:{pose:d=>({edge:'e',s:d,p:[0,10+d*grade,d],grade})}};
+            const world={network:{edges:new Map([['e',{speedLimit:s=>s<=-360?40:120}]])}};
+            const j=new JourneyDirector();j.survey(train,world,{weather:'clear'},120,null);return j;
+           };
+           const down=make(.04),up=make(-.04);
+           assert.ok(down.profile.every(p=>p.grade===-.04));assert.ok(up.profile.every(p=>p.grade===.04));assert.ok(down.guidance.target<up.guidance.target);
+          });
+          test('cutting-only engineering preserves walls without duplicating viaducts',()=>{
+           const make=ground=>({builder:new SceneBuilder(),features:{cuttings:0,landmarks:0},def:{theme:'alpine'},baseHeight:()=>ground,railCross:(p,x,y)=>[x,p.p[1]+y,p.p[2]],network:{edges:new Map([['e',{length:200,at:s=>({p:[0,30,s],f:[0,0,1],right:[1,0,0]})}]])}});
+           const cut=make(70);buildCivilEngineering(cut,false);assert.ok(cut.features.cuttings>0);assert.ok(cut.builder.finish().length>0);
+           const bridge=make(0);buildCivilEngineering(bridge,false);assert.equal(bridge.features.landmarks,0);assert.equal(bridge.builder.finish().length,0);
+           assert.ok(readFileSync(new URL('../src/world.js',import.meta.url),'utf8').includes('buildCivilEngineering(this,false)'));
+          });
+          for(const mode of ['chase','orbit','aerial','free'])test(mode+' photo round trip preserves zoom and complete camera framing',()=>{
+           const camera=new CameraRig();camera.setMode(mode);camera.distance=237;camera.fov=47;camera.azimuth=.75;camera.elevation=.41;camera.position=[10,30,50];camera.target=[1,4,9];camera.trackAnchor=[4,5,6];
+           const state=snapshotPhotoCamera(camera);camera.setMode('free');camera.distance=900;camera.position[0]=500;camera.target[1]=-50;camera.trackAnchor=null;
+           restorePhotoCamera(camera,state);assert.deepEqual(snapshotPhotoCamera(camera),state);assert.notEqual(camera.position,state.position);assert.equal(camera.distance,237);
+          });
+          ''')
+          PY
+      - name: Test reviewed implementation and rebuild distributions
+        run: |
+          npm test
+          npm run build:pages
+      - name: Commit complete reviewed correction
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/world-detail.js src/world.js src/journey.js src/cinematic-ui.js tests/review-regressions.test.js tools/verify_cinematic.py dist
+          git diff --cached --check
+          git commit -m 'fix: restore cutting walls, reverse-grade coaching and complete photo camera state'
+          git push origin HEAD:feat/cinematic-journeys
