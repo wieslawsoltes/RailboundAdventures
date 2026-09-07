@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Exercise the published ES-module game, not an injected or rebuilt copy.
+"""Test the published ES-module game using Chromium's actual renderers.
 
-Run with PAGE_URL and BACKEND=webgpu|webgl. CI uses Chromium's software
-adapter: this validates GPU API/shader correctness, not hardware performance.
-The GPU watchdog is disabled only in this CPU-rendered test process. API
-validation, device-loss checks and visible-output assertions remain enabled.
+PAGE_URL selects the deployment; BACKEND is webgpu or webgl. On Linux, run
+under xvfb-run so WebGPU canvas presentation reaches a real compositor.
+SwiftShader validates API/shader correctness, not hardware performance.
 """
 import io
 import json
 import os
+import sys
 from pathlib import Path
 
 from PIL import Image, ImageStat
@@ -21,7 +21,6 @@ if BACKEND not in ('webgpu', 'webgl'):
 OUT = Path('browser-results') / BACKEND
 OUT.mkdir(parents=True, exist_ok=True)
 report = {'url': BASE, 'backend': BACKEND, 'checks': [], 'errors': [], 'warnings': []}
-# Preserve Chromium stderr in CI logs when its GPU process exits unexpectedly.
 os.environ.setdefault('DEBUG', 'pw:browser')
 
 
@@ -76,11 +75,17 @@ def render(page, name):
 
 
 with sync_playwright() as p:
+    # Software frames can exceed hardware watchdog deadlines. Disable that
+    # deadline only for this test process; never disable API validation.
     args = ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
             '--disable-gpu-watchdog', '--enable-logging=stderr']
     if BACKEND == 'webgpu':
-        args += ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader']
-    browser = p.chromium.launch(channel='chromium', headless=True, args=args)
+        args += ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--enable-gpu']
+        if sys.platform.startswith('linux'):
+            if not os.environ.get('DISPLAY'):
+                raise RuntimeError('Linux WebGPU canvas verification requires xvfb-run -a python tools/verify_browser.py')
+            args += ['--enable-features=Vulkan', '--use-vulkan=swiftshader']
+    browser = p.chromium.launch(channel='chromium', headless=not bool(os.environ.get('DISPLAY')), args=args)
     report['browser'] = browser.version
     context = browser.new_context(viewport={'width': 1280, 'height': 800}, device_scale_factor=1, has_touch=True)
     if BACKEND == 'webgl':
