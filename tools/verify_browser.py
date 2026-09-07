@@ -3,6 +3,8 @@
 
 Run with PAGE_URL and BACKEND=webgpu|webgl. CI uses Chromium's software
 adapter: this validates GPU API/shader correctness, not hardware performance.
+The GPU watchdog is disabled only in this CPU-rendered test process. API
+validation, device-loss checks and visible-output assertions remain enabled.
 """
 import io
 import json
@@ -19,6 +21,8 @@ if BACKEND not in ('webgpu', 'webgl'):
 OUT = Path('browser-results') / BACKEND
 OUT.mkdir(parents=True, exist_ok=True)
 report = {'url': BASE, 'backend': BACKEND, 'checks': [], 'errors': [], 'warnings': []}
+# Preserve Chromium stderr in CI logs when its GPU process exits unexpectedly.
+os.environ.setdefault('DEBUG', 'pw:browser')
 
 
 def check(name, value, detail=None):
@@ -34,11 +38,15 @@ def check(name, value, detail=None):
 def boot(page):
     page.wait_for_function('window.railbound?.ready || !document.getElementById("fatal").classList.contains("hidden")', timeout=120000)
     state = page.evaluate('''() => ({ready: railbound.ready, backend: railbound.renderer.kind,
-        error: railbound.renderer.lastError, fatal: document.getElementById('fatal-message').textContent})''')
+        adapter: railbound.renderer.adapterInfo, error: railbound.renderer.lastError,
+        fatal: document.getElementById('fatal-message').textContent})''')
     check('game startup', state['ready'], state)
     check('requested renderer active', state['backend'] == ('WebGPU' if BACKEND == 'webgpu' else 'WebGL 2'), state)
     page.evaluate('''() => { const a = railbound; a.renderEnabled = false; a.paused = true;
-        a.renderer.settings.resolution = .5; a.settings.adaptive = false; }''')
+        a.renderer.settings.resolution = .5; a.settings.adaptive = false;
+        if (a.renderer.device) a.renderer.device.lost.then(info => {
+            window.testDeviceLoss = {reason: info.reason, message: info.message};
+        }); }''')
 
 
 def render(page, name):
@@ -49,9 +57,14 @@ def render(page, name):
         if (r.device) r.device.pushErrorScope('validation');
         r.render([...a.world.batches, ...dynamic], a.camera, a.world.def, a.env, a.player, a.simTime);
         let error = null;
-        if (r.device) { await r.device.queue.onSubmittedWorkDone(); error = (await r.device.popErrorScope())?.message || null; }
-        else { const code = r.gl.getError(); if (code) error = 'WebGL error ' + code; }
-        return {calls:r.drawCalls, triangles:r.triangles, lost:r.lost, error};
+        if (r.device) {
+            try { await r.device.queue.onSubmittedWorkDone(); }
+            catch (failure) { error = failure.message; }
+            try { error = (await r.device.popErrorScope())?.message || error; }
+            catch (failure) { error = error || failure.message; }
+        } else { const code = r.gl.getError(); if (code) error = 'WebGL error ' + code; }
+        return {calls:r.drawCalls, triangles:r.triangles, lost:r.lost,
+            deviceLoss: window.testDeviceLoss || null, error};
     }''')
     check(name + ' GPU submission', result['calls'] > 10 and result['triangles'] > 1000 and not result['lost'] and not result['error'], result)
     page.wait_for_timeout(400)
@@ -63,7 +76,8 @@ def render(page, name):
 
 
 with sync_playwright() as p:
-    args = ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+    args = ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader',
+            '--disable-gpu-watchdog', '--enable-logging=stderr']
     if BACKEND == 'webgpu':
         args += ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader']
     browser = p.chromium.launch(channel='chromium', headless=True, args=args)
@@ -131,6 +145,9 @@ with sync_playwright() as p:
         print('BROWSER ERRORS', json.dumps(report['errors']), flush=True)
         print('BROWSER WARNINGS', json.dumps(report['warnings'][:10]), flush=True)
         try:
+            report['diagnostics'] = page.evaluate('''() => ({deviceLoss:window.testDeviceLoss,
+                lost:window.railbound?.renderer.lost, adapter:window.railbound?.renderer.adapterInfo})''')
+            print('GPU DIAGNOSTICS', json.dumps(report['diagnostics']), flush=True)
             page.screenshot(path=str(OUT / 'failure.png'), timeout=20000)
         except Exception:
             pass
