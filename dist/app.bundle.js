@@ -857,8 +857,19 @@ class RailNetwork {
    // A genuine scenic alternative follows the same corridor rather than a
    // straight chord through the middle of every world. Zero endpoint derivative.
    branch.length=0;
+   // Parallel offsets have a cusp when offset * curvature approaches one.
+   // Bound the entire excursion using sampled horizontal curvature, retaining
+   // a smooth sin-squared envelope rather than introducing local kinks.
+   let maxCurvature=0;
+   for(let j=a+1;j<b;j++) {
+    const p=all[j-1],q=all[j],r=all[j+1];
+    const ux=q[0]-p[0],uz=q[2]-p[2],vx=r[0]-q[0],vz=r[2]-q[2];
+    const lu=Math.hypot(ux,uz),lv=Math.hypot(vx,vz);
+    if(lu>1e-6&&lv>1e-6)maxCurvature=Math.max(maxCurvature,Math.hypot(vx/lv-ux/lu,vz/lv-uz/lu)/((lu+lv)*.5));
+   }
+   const excursion=Math.min(world.theme==='canyon'?200:130,.2/Math.max(1e-9,maxCurvature));
    for(let j=a;j<=b;j++) {const t=(j-a)/(b-a),p=all[j],before=all[Math.max(0,j-1)],after=all[Math.min(all.length-1,j+1)],dx=after[0]-before[0],dz=after[2]-before[2],len=Math.hypot(dx,dz)||1;
-    const offset=Math.sin(Math.PI*t)**2*(world.theme==='canyon'?200:130);
+    const offset=Math.sin(Math.PI*t)**2*excursion;
     branch.push([p[0]-dz/len*offset,p[1],p[2]+dx/len*offset]);
    }
   }

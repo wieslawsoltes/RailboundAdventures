@@ -117,3 +117,7 @@ including module workers, varied seeds, all eight regions, all six train familie
 mobile layouts, visible nonblank frames and offline startup. Screenshots and JSON
 reports are uploaded as CI artifacts. Software-adapter CI validates API and shader
 correctness, not physical-device performance.
+
+### Extreme-seed route safety
+
+Parallel-route displacement is limited by the maximum sampled horizontal curvature: excursion times curvature stays at or below 0.2. This prevents offset cusps and folded branch tangents. Eight additional regressions cover all track segments in 24 region/seed combinations at maximum relief and erosion, including coastal seed 1. This is a tested seed set, not a proof for every possible seed.
