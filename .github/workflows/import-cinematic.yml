@@ -21,19 +21,19 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('src/postprocess.js');s=p.read_text()
-          old='c=clamp((c-vec3f(.18))*post.values0.w+vec3f(.18),vec3f(0),vec3f(1));'
-          new='c=pow(clamp(c,vec3f(0),vec3f(1)),vec3f(post.values0.w));'
+          old='c=(c-.18)*u.look.z+.18;'
+          new='c=pow(clamp(c,vec3f(0),vec3f(1)),vec3f(u.look.z));'
           assert s.count(old)==1
           s=s.replace(old,new)
-          old='c=clamp((c-vec3(.18))*look.x+vec3(.18),0.,1.);'
-          new='c=pow(clamp(c,vec3(0),vec3(1)),vec3(look.x));'
+          old='c=(c-.18)*look.z+.18;'
+          new='c=pow(clamp(c,vec3(0),vec3(1)),vec3(look.z));'
           assert s.count(old)==1
           p.write_text(s.replace(old,new))
           p=Path('src/shaders.js');s=p.read_text()
           assert s.count('mix(.06,1.,u.sunDay.w)')==2
           p.write_text(s.replace('mix(.06,1.,u.sunDay.w)','mix(.12,1.,u.sunDay.w)'))
           p=Path('tests/night-display.test.js')
-          p.write_text("import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport {POST_WGSL,LOOKS} from '../src/postprocess.js';\nimport {readFileSync} from 'node:fs';\ntest('cinematic contrast preserves positive night radiance',()=>{for(const look of Object.values(LOOKS))for(const x of [.0001,.001,.005,.01,.1,1]){const y=Math.pow(x,look.contrast);assert.ok(y>0&&y<=1);}assert.ok(POST_WGSL.includes('pow(clamp(c,vec3f(0),vec3f(1)),vec3f(post.values0.w))'));const code=readFileSync(new URL('../src/postprocess.js',import.meta.url),'utf8');assert.ok(code.includes('pow(clamp(c,vec3(0),vec3(1)),vec3(look.x))'));});\n")
+          p.write_text("import test from 'node:test';\nimport assert from 'node:assert/strict';\nimport {POST_WGSL,LOOKS} from '../src/postprocess.js';\nimport {readFileSync} from 'node:fs';\ntest('cinematic contrast preserves positive night radiance',()=>{for(const look of Object.values(LOOKS))for(const x of [.0001,.001,.005,.01,.1,1]){const y=Math.pow(x,look.contrast);assert.ok(y>0&&y<=1);}assert.ok(POST_WGSL.includes('pow(clamp(c,vec3f(0),vec3f(1)),vec3f(u.look.z))'));const code=readFileSync(new URL('../src/postprocess.js',import.meta.url),'utf8');assert.ok(code.includes('pow(clamp(c,vec3(0),vec3(1)),vec3(look.z))'));});\n")
           p=Path('docs/CINEMATIC-JOURNEYS.md');s=p.read_text();s=s.replace('a vignette and optional grain. Grain defaults to zero.', 'a vignette and optional grain. Grain defaults to zero. Contrast preserves positive low-light values rather than subtracting a black offset, and night ambient light keeps train silhouettes legible.')
           p.write_text(s)
           p=Path('tools/verify_cinematic.py');s=p.read_text();old="            render(page,region+'-atmosphere')";assert s.count(old)==1
