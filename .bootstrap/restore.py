@@ -26,6 +26,9 @@ replacements = [
     ("page.on('console',lambda m: errors.append(m.text) if m.type=='error' else None)", "page.on('console',lambda m: (errors.append(m.text),print('CONSOLE ERROR:',m.text,flush=True)) if m.type=='error' else None)"),
     ("page.wait_for_function('railbound?.ready',timeout=90000)", "page.wait_for_function('globalThis.railbound?.ready || document.getElementById(\\\"fatal-message\\\")?.textContent',timeout=90000)\n        startup=page.evaluate('({ready:globalThis.railbound?.ready,renderer:globalThis.railbound?.renderer.kind,fatal:document.getElementById(\\\"fatal-message\\\")?.textContent,secure:isSecureContext,gpu:!!navigator.gpu})')\n        print('STARTUP:',startup,flush=True)\n        if not startup.get('ready'): raise RuntimeError(startup)"),
     ("print('FAILED',e,flush=True)", "print('FAILED',e,'CAPTURED ERRORS:',errors,flush=True)\n        print('STARTUP DIAGNOSTICS:',page.evaluate('({ready:globalThis.railbound?.ready,renderer:globalThis.railbound?.renderer.kind,fatal:document.getElementById(\\\"fatal-message\\\")?.textContent})'),flush=True)"),
+    ("headless=True,args=", "headless=os.environ.get('RAILBOUND_HEADFUL') != '1',args="),
+    ("'--use-angle=swiftshader'", "'--use-angle=swiftshader-webgl'"),
+    ("    context=b.new_context", "    gpu=b.new_browser_cdp_session().send('SystemInfo.getInfo').get('gpu',{})\n    print('GPU FEATURE STATUS:',gpu.get('featureStatus'),flush=True)\n    context=b.new_context"),
 ]
 for old,new in replacements:
     assert old in source, 'Missing patch target: '+old
