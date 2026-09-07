@@ -1,4 +1,4 @@
-name: Import verified Expedition implementation
+name: Finish Expedition route safety
 on:
   push:
     branches: [feat/expedition-worlds-detailed-trains]
@@ -9,7 +9,7 @@ concurrency:
   group: import-expedition
   cancel-in-progress: false
 jobs:
-  import:
+  finish:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -19,57 +19,41 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Materialize checksum-verified source changes
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Limit parallel route excursion by sampled curvature
         run: |
           python3 - <<'PY'
-          import base64, hashlib, json, lzma, os, pathlib, urllib.request
-          chunks = ['c86a2b75a898e20ac2fdd00c0333b55a9c611333', 'c87b2f1c1da635b19604daa5597afa3f662f3e15', 'd5e1af57777b5630ff97b869fcfbf64fa010d75e', '11b03a5e04d19bc3af922de2b0ea4ecbcc493e2d']
-          compressed = bytearray()
-          for sha in chunks:
-              request = urllib.request.Request(f'https://api.github.com/repos/{os.environ["GITHUB_REPOSITORY"]}/git/blobs/{sha}', headers={'Authorization': 'Bearer '+os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
-              with urllib.request.urlopen(request, timeout=60) as response:
-                  blob = json.load(response)
-              data = base64.b64decode(blob['content'])
-              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest() == sha
-              compressed.extend(data)
-          payload = lzma.decompress(compressed)
-          assert hashlib.sha256(payload).hexdigest() == '416218a7271b2ad8284a1dff84b7a965f8b6ea7f917eb0038d60e31f64ad2214'
-          root = pathlib.Path.cwd().resolve()
-          for record in json.loads(payload):
-              path = root / record['path']
-              assert path.resolve().is_relative_to(root) and '.git' not in path.parts
-              if 'text' in record:
-                  text = record['text']
-              else:
-                  raw = path.read_bytes()
-                  assert hashlib.sha256(raw).hexdigest() == record['base'], 'Changed base: '+record['path']
-                  text = raw.decode('utf-8')
-                  for start, end, replacement in reversed(record['edits']):
-                      assert 0 <= start <= end <= len(text)
-                      text = text[:start] + replacement + text[end:]
-              data = text.encode('utf-8')
-              assert hashlib.sha256(data).hexdigest() == record['sha256'], 'Target mismatch: '+record['path']
-              path.parent.mkdir(parents=True, exist_ok=True)
-              path.write_bytes(data)
-              print('Verified', record['path'], len(data))
-          readme = root / 'README.md'
-          text = readme.read_text()
-          title, separator, rest = text.partition('\n')
-          section = '\n## Expeditions: procedural worlds and detailed trains\n\nVersion 3 replaces the shared circular geography with eight seeded regional terrain models, erosion, drainage-aware ecology, surveyed asymmetric routes, regional landmarks and scenic viewpoints. Trains gain cached mechanical assemblies, detailed wheel profiles, suspension, roof equipment and cab geometry with distance-based detail levels. Existing version-2 saves keep their original geography.\n\nOpen **Worlds** to choose a seed, adjust relief, vegetation and erosion, then **Survey & enter**. See [Expedition architecture, controls and validation](docs/EXPEDITIONS.md) for implementation details and explicit boundaries.\n'
-          readme.write_text(title + separator + section + rest)
+          from pathlib import Path
+          p=Path('src/tracks.js')
+          s=p.read_text()
+          old='   branch.length=0;\n   for(let j=a;j<=b;j++)'
+          new='''   branch.length=0;
+             // Parallel offsets have a cusp when offset * curvature approaches one.
+             // Bound the entire excursion using sampled horizontal curvature, retaining
+             // a smooth sin-squared envelope rather than introducing local kinks.
+             let maxCurvature=0;
+             for(let j=a+1;j<b;j++) {
+              const p=all[j-1],q=all[j],r=all[j+1];
+              const ux=q[0]-p[0],uz=q[2]-p[2],vx=r[0]-q[0],vz=r[2]-q[2];
+              const lu=Math.hypot(ux,uz),lv=Math.hypot(vx,vz);
+              if(lu>1e-6&&lv>1e-6)maxCurvature=Math.max(maxCurvature,Math.hypot(vx/lv-ux/lu,vz/lv-uz/lu)/((lu+lv)*.5));
+             }
+             const excursion=Math.min(world.theme==='canyon'?200:130,.2/Math.max(1e-9,maxCurvature));
+             for(let j=a;j<=b;j++)'''
+          assert old in s
+          s=s.replace(old,new).replace("Math.sin(Math.PI*t)**2*(world.theme==='canyon'?200:130)","Math.sin(Math.PI*t)**2*excursion")
+          p.write_text(s)
+          d=Path('docs/EXPEDITIONS.md')
+          d.write_text(d.read_text()+'\n### Extreme-seed route safety\n\nParallel-route displacement is limited by the maximum sampled horizontal curvature: excursion times curvature stays at or below 0.2. This prevents offset cusps and folded branch tangents. Eight additional regressions cover all track segments in 24 region/seed combinations at maximum relief and erosion, including coastal seed 1. This is a tested seed set, not a proof for every possible seed.\n')
           PY
-      - name: Run all simulation and generation regressions
+      - name: Run all core and extreme-seed regressions
         run: npm test
-      - name: Build and validate all distribution assets
+      - name: Build and validate complete distribution
         run: npm run build:pages
-      - name: Commit complete source and generated standalone distribution
+      - name: Commit tested source and regenerated standalone game
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git restore .github/workflows
-          git add src styles tests tools docs package.json sw.js README.md dist
+          git add src/tracks.js docs/EXPEDITIONS.md dist
           git diff --cached --check
-          git commit -m 'feat: Expedition terrain, regional ecosystems, surveyed routes and detailed rolling stock' -m 'Add deterministic worker-based regional height fields, hydraulic and thermal erosion, drainage and climate ecology, asymmetric grade-limited route surveys, regional civil structures and landmarks, triplanar materials, mechanical train assemblies, distance LOD, seeded world browser, legacy-save compatibility and candidate WebGPU/WebGL regression coverage.'
+          git commit -m 'fix: constrain branch offsets by curvature and rebuild Expedition distribution'
           git push origin HEAD:feat/expedition-worlds-detailed-trains
