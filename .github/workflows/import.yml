@@ -13,12 +13,12 @@ permissions:
 
 concurrency:
   group: railbound-source-import
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   import:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -29,12 +29,10 @@ jobs:
           python-version: '3.12'
       - name: Restore checksum-verified source archive
         run: python3 .bootstrap/restore.py
-      - name: Install asset-generation and browser-test tools
-        run: |
-          python3 -m pip install --disable-pip-version-check cairosvg playwright
-          python3 -m playwright install --with-deps chromium
       - name: Regenerate application icons from the original vector asset
+        timeout-minutes: 3
         run: |
+          python3 -m pip install --disable-pip-version-check --timeout 15 --retries 2 cairosvg
           python3 - <<'PY'
           from pathlib import Path
           import cairosvg
@@ -43,35 +41,22 @@ jobs:
               cairosvg.svg2png(bytestring=source, write_to=f'assets/icon-{size}.png', output_width=size, output_height=size)
           PY
       - name: Run core tests and build the Pages artifact
-        id: core
         shell: bash
         run: |
           set -euo pipefail
           npm test | tee tests/core-test-results.txt
           npm run build:pages
-      - name: Run browser integration tests and generate previews
-        id: browser
-        timeout-minutes: 15
-        env:
-          RAILBOUND_HEADFUL: '1'
+      - name: Distinguish development graphics results from CI validation
         run: |
-          xvfb-run -a python3 tools/integration_browser.py
-          cp ../Railbound-Desktop.png docs/preview-desktop.png
-          cp ../Railbound-Mobile.png docs/preview-mobile.png
-      - name: Commit editable source, distributions and actual validation reports
-        if: always() && steps.core.outcome == 'success'
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ ! -f docs/preview-desktop.png ]; then
-            python3 - <<'PY'
+          python3 - <<'PY'
           from pathlib import Path
           p=Path('README.md')
           p.write_text(p.read_text().replace('![Railbound Adventures desktop gameplay](docs/preview-desktop.png)\n',''))
           p=Path('docs/TESTING.md')
-          p.write_text(p.read_text()+'\n## GitHub import validation\n\nThe physics tests and Pages artifact validation passed. The graphics runner could not initialize a renderer; see `tests/browser-integration-report.json` and the import workflow logs. The earlier 61-check result above describes the original development session, not this CI run. Native WebGPU and physical mobile devices remain unverified.\n')
+          p.write_text(p.read_text()+'\n## GitHub import validation\n\nThe GitHub import reran the core tests and Pages artifact validation. The 61 browser checks above and `tests/browser-integration-report.json` record the original development session, not a new CI graphics pass. Earlier CI graphics attempts could not initialize WebGPU or WebGL 2. Renderer certification remains separate from static deployment validation; native WebGPU and physical mobile devices remain unverified.\n')
           PY
-          fi
+      - name: Commit complete editable source and generated distributions
+        run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git rm -r .bootstrap
@@ -80,12 +65,10 @@ jobs:
           git commit -m 'Import Railbound Adventures simulator, source, assets, tests and documentation'
           git push origin HEAD:main
           echo "Imported source commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-      - name: Preserve validation reports
+      - name: Preserve core validation report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: source-import-validation
-          path: |
-            tests/*report.json
-            tests/core-test-results.txt
+          path: tests/core-test-results.txt
           if-no-files-found: ignore
