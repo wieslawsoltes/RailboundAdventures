@@ -9,3 +9,17 @@
 /* All editor and dispatch controls remain available on a phone, below the map. */
 @media(max-width:760px){.map-layout>aside{display:block}.map-layout>aside .field{margin-top:16px}.rail-button{min-height:42px}.footer{bottom:max(12px,env(safe-area-inset-bottom))}.cab-deck{bottom:max(33px,calc(env(safe-area-inset-bottom) + 25px))}.topbar{top:max(12px,env(safe-area-inset-top))}}
 @media(max-height:570px) and (orientation:landscape){.rail-button{min-height:35px}.footer{bottom:8px}.cab-deck{bottom:25px}.topbar{top:9px}}
+
+/* Expedition generator controls */
+.expedition-head{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #a9c19c26}
+.expedition-head p{margin:8px 0 0;color:#bfccb7;line-height:1.65;max-width:580px}
+.expedition-seed{font:11px monospace;white-space:nowrap;letter-spacing:.08em;color:#dfc599;border:1px solid #dfc59944;border-radius:6px;padding:9px 12px}
+.generation-controls{display:grid;grid-template-columns:1.35fr 1fr 1fr 1fr;gap:20px;align-items:start}
+.seed-entry{display:flex;gap:6px;align-items:center}.seed-entry input{min-width:0;width:100%;font:13px monospace}.seed-entry button{flex-shrink:0}
+.expedition-stats{display:flex;gap:10px;flex-wrap:wrap;font:10px monospace;color:#c4d2bb;margin:12px 0 20px}.expedition-stats span{background:#a6bf9512;border:1px solid #a6bf951f;padding:7px 9px;border-radius:5px}
+.expedition-preview{display:block;width:100%;height:134px;object-fit:cover;background:#1b3029}
+.expedition-grid .card-text p{font-size:11px;line-height:1.55;min-height:36px;margin-bottom:8px}
+.expedition-grid .card-text small{display:block;font-size:10px;color:#9ba992;line-height:1.5;min-height:28px}
+.expedition-action{display:block;text-align:left;padding:0 16px 14px;color:#d9c6a2;font:9px monospace;letter-spacing:.12em}
+@media(max-width:760px){.generation-controls{grid-template-columns:1fr 1fr;gap:12px}.expedition-head{align-items:flex-start;flex-direction:column;gap:10px}.expedition-grid .card-text p{font-size:10px}.expedition-preview{height:112px}}
+@media(max-width:380px){.generation-controls{grid-template-columns:1fr}.expedition-stats{gap:5px}}

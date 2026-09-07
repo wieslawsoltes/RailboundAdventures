@@ -1,6 +1,6 @@
 /* Railbound Adventures: same-origin, versioned offline app-shell cache. */
 'use strict';
-const CACHE = 'railbound-adventures-2.0.0-20260907';
+const CACHE = 'railbound-adventures-3.0.0-expedition';
 const BASE = new URL('./', self.location.href);
 const FILES = [
   './', 'index.html', 'styles/app.css', 'manifest.webmanifest',
@@ -8,7 +8,9 @@ const FILES = [
   'src/math.js', 'src/data.js', 'src/tracks.js', 'src/physics.js',
   'src/geometry.js', 'src/shaders.js', 'src/renderer.js', 'src/world.js',
   'src/rolling-stock.js', 'src/camera.js', 'src/audio.js',
-  'src/persistence.js', 'src/ui.js', 'src/main.js'
+  'src/persistence.js', 'src/ui.js', 'src/main.js',
+  'src/generation.js', 'src/generation-worker.js', 'src/generation-ui.js',
+  'src/world-detail.js', 'src/train-detail.js'
 ].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));

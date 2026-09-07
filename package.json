@@ -1,9 +1,9 @@
 {
   "name": "railbound-adventures",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
-  "description": "A dependency-free WebGPU railway sandbox and driving simulator",
+  "description": "Railbound Expeditions: eroded procedural regions, surveyed railways, detailed rolling stock and WebGPU rendering",
   "scripts": {
     "start": "python3 -m http.server 8000 --bind 127.0.0.1",
     "test": "node --test tests/*.test.js",

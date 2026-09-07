@@ -14,6 +14,20 @@
 /* All editor and dispatch controls remain available on a phone, below the map. */
 @media(max-width:760px){.map-layout>aside{display:block}.map-layout>aside .field{margin-top:16px}.rail-button{min-height:42px}.footer{bottom:max(12px,env(safe-area-inset-bottom))}.cab-deck{bottom:max(33px,calc(env(safe-area-inset-bottom) + 25px))}.topbar{top:max(12px,env(safe-area-inset-top))}}
 @media(max-height:570px) and (orientation:landscape){.rail-button{min-height:35px}.footer{bottom:8px}.cab-deck{bottom:25px}.topbar{top:9px}}
+
+/* Expedition generator controls */
+.expedition-head{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid #a9c19c26}
+.expedition-head p{margin:8px 0 0;color:#bfccb7;line-height:1.65;max-width:580px}
+.expedition-seed{font:11px monospace;white-space:nowrap;letter-spacing:.08em;color:#dfc599;border:1px solid #dfc59944;border-radius:6px;padding:9px 12px}
+.generation-controls{display:grid;grid-template-columns:1.35fr 1fr 1fr 1fr;gap:20px;align-items:start}
+.seed-entry{display:flex;gap:6px;align-items:center}.seed-entry input{min-width:0;width:100%;font:13px monospace}.seed-entry button{flex-shrink:0}
+.expedition-stats{display:flex;gap:10px;flex-wrap:wrap;font:10px monospace;color:#c4d2bb;margin:12px 0 20px}.expedition-stats span{background:#a6bf9512;border:1px solid #a6bf951f;padding:7px 9px;border-radius:5px}
+.expedition-preview{display:block;width:100%;height:134px;object-fit:cover;background:#1b3029}
+.expedition-grid .card-text p{font-size:11px;line-height:1.55;min-height:36px;margin-bottom:8px}
+.expedition-grid .card-text small{display:block;font-size:10px;color:#9ba992;line-height:1.5;min-height:28px}
+.expedition-action{display:block;text-align:left;padding:0 16px 14px;color:#d9c6a2;font:9px monospace;letter-spacing:.12em}
+@media(max-width:760px){.generation-controls{grid-template-columns:1fr 1fr;gap:12px}.expedition-head{align-items:flex-start;flex-direction:column;gap:10px}.expedition-grid .card-text p{font-size:10px}.expedition-preview{height:112px}}
+@media(max-width:380px){.generation-controls{grid-template-columns:1fr}.expedition-stats{gap:5px}}
 </style>
 </head>
 <body>
@@ -208,8 +222,27 @@ const WGSL_MAIN = WGSL_COMMON+/* wgsl */`
 fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.5)+vec2f(.5);if(any(uv<vec2f(.002))||any(uv>vec2f(.998))||p.z<0.||p.z>1.||u.headDir.w<.5){return 1.;}let bias=.00012+.00045*(1.-max(0.,dot(n,u.sunDay.xyz)));var s=0.;let size=vec2f(textureDimensions(shadow));for(var x=-1;x<=1;x++){for(var y=-1;y<=1;y++){s+=textureSampleCompareLevel(shadow,shadowSampler,uv+vec2f(f32(x),f32(y))/size,p.z-bias);}}return s/9.;}
 @fragment fn fs(v:Vout)->@location(0) vec4f {
  var n=normalize(v.normal);let view=normalize(u.cameraTime.xyz-v.world);var col=pow(v.color.rgb,vec3f(2.2));let kind=v.props.x;var rough=v.props.y;var metal=v.props.z;var emissive=v.props.w;
- if(kind>.5&&kind<1.5){let terrainNoise=fbm(v.world.xz*.004);let detail=noise(v.world.xz*.7);let grass=pow(u.ground.rgb,vec3f(2.2))*(.70+terrainNoise*.6+detail*.11);let rock=pow(u.rock.rgb,vec3f(2.2))*(.6+terrainNoise*.7);let slope=1.-n.y;col=mix(grass,rock,smoothstep(.16,.48,slope));if(u.env.z>2.5&&u.env.z<3.5){col=mix(grass,rock,smoothstep(.07,.32,slope));col*=.82+.18*sin(v.world.y*.09+terrainNoise*2.);}
- let snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,v.world.y+(terrainNoise-.5)*110.)*smoothstep(.38,.72,n.y);col=mix(col,vec3f(.82,.85,.86),snow);col*=1.-u.env.y*.19;rough=.91;n=normalize(n+vec3f((noise(v.world.xz*.41)-.5)*.045,0,(noise(v.world.zx*.53)-.5)*.045));}
+ if(kind>.5&&kind<1.5){
+  let terrainNoise=fbm(v.world.xz*.0023);let moisture=clamp(v.uv.x,0.,1.);let drainage=clamp(v.uv.y,0.,1.);
+  let blend=pow(abs(n),vec3f(4.));let weights=blend/max(dot(blend,vec3f(1.)),.001);
+  let grain=noise(v.world.yz*.24)*weights.x+noise(v.world.xz*.24)*weights.y+noise(v.world.xy*.24)*weights.z;
+  let detail=noise(v.world.xz*1.3);
+  var grass=pow(u.ground.rgb,vec3f(2.2))*(.65+terrainNoise*.65+grain*.14);
+  let dry=vec3f(.29,.235,.125);grass=mix(grass,dry,(1.-moisture)*.24);
+  var rock=pow(u.rock.rgb,vec3f(2.2))*(.55+grain*.55+terrainNoise*.25);
+  let slope=1.-max(0.,n.y);col=mix(grass,rock,smoothstep(.13,.45,slope));
+  col=mix(col,rock*.80,drainage*smoothstep(.02,.22,slope)*.32);
+  if(u.env.z>2.5&&u.env.z<3.5){
+   let strata=.88+.08*sin(v.world.y*.31+terrainNoise*4.)+.045*sin(v.world.y*1.13);
+   col=mix(grass*vec3f(1.08,.96,.8),rock,smoothstep(.07,.30,slope))*strata;
+  }
+  if(u.env.z>4.5&&u.env.z<5.5){col=mix(col,vec3f(.19,.11,.17),smoothstep(.51,.68,terrainNoise)*(1.-smoothstep(.05,.22,slope))*.3);}
+  let shore=(1.-smoothstep(u.env.w+1.,u.env.w+12.,v.world.y))*(1.-smoothstep(.05,.28,slope));
+  col=mix(col,vec3f(.30,.28,.20),shore*.65);col*=.94+detail*.12;
+  let snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,v.world.y+(terrainNoise-.5)*110.)*smoothstep(.38,.72,n.y);
+  col=mix(col,vec3f(.82,.85,.86),snow);col*=1.-u.env.y*.19;rough=.91;
+  n=normalize(n+vec3f((noise(v.world.xz*.41)-.5)*.075,0.,(noise(v.world.zx*.53)-.5)*.075));
+ }
  if(kind>5.5&&kind<6.5){col*=.89+noise((v.world.xz+vec2f(v.world.y*.71,v.world.y*.31))*5.)*.16;}
  if(kind>6.5&&kind<7.5){let grit=hash(floor(v.world.xz*23.));col*=.7+grit*.6;}
  let light=u.sunDay.xyz;let ndl=max(0.,dot(n,light));let visibility=shadeShadow(v.light,n);let hemi=mix(vec3f(.09,.105,.1),vec3f(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);
@@ -220,6 +253,7 @@ fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.
  if(kind>1.5&&kind<2.5){let t=u.cameraTime.w;let wave=sin(v.world.x*.11+t*.9)*.05+sin(v.world.z*.17-t*.7)*.035; n=normalize(vec3f(wave,1.,cos(v.world.z*.09+t*.7)*.06));let fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);let reflection=atmosphere(reflect(-view,n),true);let sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;color=mix(pow(v.color.rgb,vec3f(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){color*=.7+noise(v.world.xz*3.1+vec2f(v.world.y*1.7))*.38;color+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}
  if(u.headPos.w>.01){let delta=v.world-u.headPos.xyz;let d=length(delta);let cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));color+=col*vec3f(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
+ if(kind>8.5&&kind<9.5){let foam=.64+.36*noise(vec2f(v.world.x*1.2,v.world.y*.24+u.cameraTime.w*2.8));color=mix(color,vec3f(.64,.79,.82)*foam,.7);}
  color+=col*emissive;
  let distance=length(v.world-u.cameraTime.xyz);let heightFog=exp(-max(v.world.y-u.env.w,0.)*.00085);let fog=1.-exp(-distance*u.fog.w*heightFog);color=mix(color,atmosphere(normalize(v.world-u.cameraTime.xyz),false),clamp(fog,0.,.99));
  return vec4f(aces(color),select(1.,v.color.a,kind>7.5));
@@ -251,7 +285,27 @@ const GLSL_MAIN_FS=`#version 300 es\n`+GLSL_COMMON+`
 precision highp sampler2DShadow;uniform sampler2DShadow shadowTex;in vec3 world;in vec3 normal;in vec4 color;in vec4 props;in vec2 uv;in vec4 lightPos;out vec4 outColor;
 float shadeShadow(vec4 lp,vec3 n){vec3 p=lp.xyz/lp.w;vec2 uv=p.xy*.5+.5;float z=p.z*.5+.5;if(any(lessThan(uv,vec2(.002)))||any(greaterThan(uv,vec2(.998)))||z<0.||z>1.||u.headDir.w<.5)return 1.;float bias=.00012+.00045*(1.-max(0.,dot(n,u.sunDay.xyz)));float s=0.;vec2 size=vec2(textureSize(shadowTex,0));for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)s+=texture(shadowTex,vec3(uv+vec2(float(x),float(y))/size,z-bias));return s/9.;}
 void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=pow(color.rgb,vec3(2.2));float kind=props.x,rough=props.y,metal=props.z,emissive=props.w;
- if(kind>.5&&kind<1.5){float terrainNoise=fbm(world.xz*.004),detail=noise(world.xz*.7);vec3 grass=pow(u.ground.rgb,vec3(2.2))*(.70+terrainNoise*.6+detail*.11),rock=pow(u.rock.rgb,vec3(2.2))*(.6+terrainNoise*.7);float slope=1.-n.y;col=mix(grass,rock,smoothstep(.16,.48,slope));if(u.env.z>2.5&&u.env.z<3.5){col=mix(grass,rock,smoothstep(.07,.32,slope));col*=.82+.18*sin(world.y*.09+terrainNoise*2.);}float snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,world.y+(terrainNoise-.5)*110.)*smoothstep(.38,.72,n.y);col=mix(col,vec3(.82,.85,.86),snow);col*=1.-u.env.y*.19;rough=.91;n=normalize(n+vec3((noise(world.xz*.41)-.5)*.045,0,(noise(world.zx*.53)-.5)*.045));}
+ if(kind>.5&&kind<1.5){
+  float terrainNoise=fbm(world.xz*.0023);float moisture=clamp(uv.x,0.,1.);float drainage=clamp(uv.y,0.,1.);
+  vec3 blend=pow(abs(n),vec3(4.));vec3 weights=blend/max(dot(blend,vec3(1.)),.001);
+  float grain=noise(world.yz*.24)*weights.x+noise(world.xz*.24)*weights.y+noise(world.xy*.24)*weights.z;
+  float detail=noise(world.xz*1.3);
+  vec3 grass=pow(u.ground.rgb,vec3(2.2))*(.65+terrainNoise*.65+grain*.14);
+  vec3 dry=vec3(.29,.235,.125);grass=mix(grass,dry,(1.-moisture)*.24);
+  vec3 rock=pow(u.rock.rgb,vec3(2.2))*(.55+grain*.55+terrainNoise*.25);
+  float slope=1.-max(0.,n.y);col=mix(grass,rock,smoothstep(.13,.45,slope));
+  col=mix(col,rock*.80,drainage*smoothstep(.02,.22,slope)*.32);
+  if(u.env.z>2.5&&u.env.z<3.5){
+   float strata=.88+.08*sin(world.y*.31+terrainNoise*4.)+.045*sin(world.y*1.13);
+   col=mix(grass*vec3(1.08,.96,.8),rock,smoothstep(.07,.30,slope))*strata;
+  }
+  if(u.env.z>4.5&&u.env.z<5.5){col=mix(col,vec3(.19,.11,.17),smoothstep(.51,.68,terrainNoise)*(1.-smoothstep(.05,.22,slope))*.3);}
+  float shore=(1.-smoothstep(u.env.w+1.,u.env.w+12.,world.y))*(1.-smoothstep(.05,.28,slope));
+  col=mix(col,vec3(.30,.28,.20),shore*.65);col*=.94+detail*.12;
+  float snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,world.y+(terrainNoise-.5)*110.)*smoothstep(.38,.72,n.y);
+  col=mix(col,vec3(.82,.85,.86),snow);col*=1.-u.env.y*.19;rough=.91;
+  n=normalize(n+vec3((noise(world.xz*.41)-.5)*.075,0.,(noise(world.zx*.53)-.5)*.075));
+ }
  if(kind>5.5&&kind<6.5)col*=.89+noise((world.xz+vec2(world.y*.71,world.y*.31))*5.)*.16;
  if(kind>6.5&&kind<7.5)col*=.7+hash(floor(world.xz*23.))*.6;
  vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(lightPos,n);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);vec3 spec=F*D*.23;vec3 result=col*(hemi+sun*(1.-metal*.65))+spec*sun;
@@ -259,6 +313,7 @@ void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=
  if(kind>1.5&&kind<2.5){float t=u.cameraTime.w,wave=sin(world.x*.11+t*.9)*.05+sin(world.z*.17-t*.7)*.035;n=normalize(vec3(wave,1.,cos(world.z*.09+t*.7)*.06));float fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);vec3 reflection=atmosphere(reflect(-view,n),true);float sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;result=mix(pow(color.rgb,vec3(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){result*=.7+noise(world.xz*3.1+vec2(world.y*1.7))*.38;result+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}
  if(u.headPos.w>.01){vec3 delta=world-u.headPos.xyz;float d=length(delta),cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));result+=col*vec3(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
+ if(kind>8.5&&kind<9.5){float foam=.64+.36*noise(vec2(world.x*1.2,world.y*.24+u.cameraTime.w*2.8));result=mix(result,vec3(.64,.79,.82)*foam,.7);}
  result+=col*emissive;float distance=length(world-u.cameraTime.xyz),heightFog=exp(-max(world.y-u.env.w,0.)*.00085),f=1.-exp(-distance*u.fog.w*heightFog);result=mix(result,atmosphere(normalize(world-u.cameraTime.xyz),false),clamp(f,0.,.99));outColor=vec4(aces(result),kind>7.5?color.a:1.);}`;
 const GLSL_SHADOW_VS=`#version 300 es\n`+GLSL_COMMON+`layout(location=0) in vec3 aPos;layout(location=3) in mat4 model;void main(){gl_Position=u.lightVP*model*vec4(aPos,1);}`;
 const GLSL_SHADOW_FS=`#version 300 es\nprecision highp float;void main(){}`;
@@ -303,7 +358,7 @@ class Renderer {
  resize(){const rect=this.canvas.getBoundingClientRect();const scale=Math.min(globalThis.devicePixelRatio||1,this.settings.quality==='ultra'?2:1.5)*this.settings.resolution;const max=this.device?.limits.maxTextureDimension2D||4096;const w=clamp(Math.floor(rect.width*scale),1,max),h=clamp(Math.floor(rect.height*scale),1,max);if(w===this.width&&h===this.height)return;this.width=this.canvas.width=w;this.height=this.canvas.height=h;if(this.device){this.colorMSAA?.destroy();this.depth?.destroy();this.colorMSAA=this.device.createTexture({size:[w,h],format:this.format,sampleCount:this.samples,usage:GPUTextureUsage.RENDER_ATTACHMENT});this.depth=this.device.createTexture({size:[w,h],format:'depth32float',sampleCount:this.samples,usage:GPUTextureUsage.RENDER_ATTACHMENT});}}
  updateUniforms(camera,world,env,train,time){const gpu=this.kind==='WebGPU',fov=(camera.fov||56)*Math.PI/180;this.vp=mat4Mul(perspective(fov,this.width/this.height,.15,15000,gpu),lookAt(camera.position,camera.target));this.frame.set(this.vp,0);this.frustum=[];for(const [axis,sign] of [[0,1],[0,-1],[1,1],[1,-1],[2,-1]]){const plane=[this.vp[3]+sign*this.vp[axis],this.vp[7]+sign*this.vp[4+axis],this.vp[11]+sign*this.vp[8+axis],this.vp[15]+sign*this.vp[12+axis]],n=Math.hypot(plane[0],plane[1],plane[2]);this.frustum.push(plane.map(x=>x/n));}this.frame.set(mat4Inverse(this.vp),16);
   const angle=(env.hour-6)/24*Math.PI*2;const altitude=Math.sin(angle);const day=smooth(-.13,.16,altitude);const sun=norm([Math.cos(angle)*.72,Math.max(.08,altitude),.38]);const target=train?train.cursor.pose(-train.length*.32).p:camera.target;const shadowTarget=[Math.round(target[0]),target[1],Math.round(target[2])];this.shadowCenter=shadowTarget;
-  const lightVP=mat4Mul(orthographic(-230,230,-230,230,1,1700,gpu),lookAt(add(shadowTarget,mul(sun,800)),shadowTarget));this.frame.set(lightVP,32);this.frame.set([...camera.position,time],48);this.frame.set([...sun,day],52);const warm=1-smooth(.08,.65,altitude);this.frame.set([1,.98-warm*.13,.90-warm*.26,env.exposure||1],56);const w=WEATHER[env.weather]||WEATHER.clear;this.frame.set([...hex(world.sky).slice(0,3),w.fog],60);this.frame.set([w.cloud,w.wet,world.theme==='canyon'?3:0,world.water],64);
+  const lightVP=mat4Mul(orthographic(-230,230,-230,230,1,1700,gpu),lookAt(add(shadowTarget,mul(sun,800)),shadowTarget));this.frame.set(lightVP,32);this.frame.set([...camera.position,time],48);this.frame.set([...sun,day],52);const warm=1-smooth(.08,.65,altitude);this.frame.set([1,.98-warm*.13,.90-warm*.26,env.exposure||1],56);const w=WEATHER[env.weather]||WEATHER.clear;this.frame.set([...hex(world.sky).slice(0,3),w.fog],60);this.frame.set([w.cloud,w.wet,['alpine','coast','nordic','canyon','sakura','highland','pine','metro'].indexOf(world.theme),world.water],64);
   if(train){const head=train.cursor.pose(train.stock.locoLength*.5);this.frame.set([head.p[0],head.p[1]+2.4,head.p[2],train.controls.headlights?14:0],68);this.frame.set([...head.f,this.settings.shadows?1:0],72);}else{this.frame.set([0,0,0,0],68);this.frame.set([0,0,1,this.settings.shadows?1:0],72);}
   this.frame.set(hex(world.ground),76);this.frame.set(hex(world.rock),80);this.frame.set([this.width,this.height,env.weather==='snow'?world.railY-15:world.snowLine,w.wind],84);
  }
@@ -322,6 +377,219 @@ class Renderer {
 }
 
 return {Renderer};
+})();
+// ---- src/generation.js ----
+const __m_src_generation_js = (() => {
+const {clamp, lerp, smooth, noise2, fbm, rng, hash2} = __m_src_math_js;
+/**
+ * Expedition terrain generator, revision 3.
+ * Pure, deterministic CPU field: no DOM, renderer, wall clock or Math.random.
+ * Domain-warped macro geology -> thermal/hydraulic erosion -> climate/drainage.
+ * The renderer, railway survey, vegetation and map all sample this same field.
+ */
+
+
+const GENERATOR_VERSION = 3;
+const REGION_PROFILES = {
+ alpine: {name:'Glacial watershed', geology:'Folded ridges · braided meltwater · hanging valleys', species:'Fir / larch / alpine meadow', relief:1, forest:.76, grade:.028, spacing:34},
+ coast: {name:'Pacific headlands', geology:'Scalloped cliffs · sea stacks · sheltered coves', species:'Coastal pine / oak / dune grass', relief:.7, forest:.56, grade:.023, spacing:38},
+ nordic: {name:'Dendritic fjord', geology:'Branching sea inlets · granite walls · snowfields', species:'Spruce / birch / tundra', relief:1.2, forest:.53, grade:.028, spacing:39},
+ canyon: {name:'Mesa country', geology:'Terraced sandstone · incised river · hoodoo fields', species:'Saguaro / juniper / desert scrub', relief:.9, forest:.15, grade:.026, spacing:55},
+ sakura: {name:'Volcanic lowlands', geology:'Volcanic cone · alluvial plain · rice terraces', species:'Cherry / bamboo / cedar', relief:.65, forest:.70, grade:.020, spacing:35},
+ highland: {name:'Lochs & moorland', geology:'Glacial troughs · drumlins · exposed tors', species:'Scots pine / heather / birch', relief:.85, forest:.38, grade:.027, spacing:44},
+ pine: {name:'Forest watershed', geology:'Meandering river · wooded ridges · wetlands', species:'Oak / beech / spruce / fern', relief:.55, forest:.92, grade:.024, spacing:29},
+ metro: {name:'Estuary metropolis', geology:'Tidal channels · docklands · urban terraces', species:'Plane tree / riparian reeds / parks', relief:.18, forest:.24, grade:.020, spacing:50}
+};
+
+function generationOptions(value = {}) {
+ value = value && typeof value === 'object' ? value : {};
+ const number = (v, lo, hi, fallback) => Number.isFinite(v) ? clamp(v, lo, hi) : fallback;
+ return {relief:number(value.relief,.55,1.65,1), vegetation:number(value.vegetation,.25,1.7,1), erosion:number(value.erosion,0,1,.65)};
+}
+
+// These are design corridors, not circular paths. The survey adds deterministic
+// lateral variation, follows the terrain, and fits an independently graded railway.
+const CORRIDORS = {
+ alpine:[[-.62,-1.1],[-.26,-.94],[.12,-.65],[.52,-.38],[.67,-.03],[.43,.29],[.08,.53],[.12,.90],[.53,1.15],[1,1.22],[1.34,.86],[1.23,.4],[1.08,-.04],[1.15,-.48],[.81,-.92],[.34,-1.27],[-.22,-1.38],[-.64,-1.3]],
+ coast:[[.12,-1.48],[.05,-1.02],[.27,-.60],[-.02,-.25],[.1,.16],[.3,.51],[.09,.89],[.35,1.34],[.7,1.54],[1.15,1.41],[1.37,.96],[1.24,.49],[1.45,.09],[1.12,-.30],[1.37,-.76],[1.02,-1.18],[.58,-1.52]],
+ nordic:[[-.27,-1.43],[-.43,-1.04],[-.55,-.62],[-.32,-.18],[-.23,.26],[-.58,.66],[-.85,1.06],[-.63,1.46],[-.16,1.65],[.28,1.44],[.65,1.17],[.81,.76],[.51,.45],[.39,.07],[.67,-.30],[.5,-.75],[.18,-1.16]],
+ canyon:[[-1.20,-1.04],[-.75,-1.28],[-.25,-1.02],[.18,-1.13],[.7,-.8],[1.04,-.31],[.68,-.01],[.30,-.21],[-.05,-.07],[-.07,.27],[.39,.43],[.85,.48],[1.19,.79],[.94,1.17],[.42,1.25],[-.15,1.07],[-.68,1.15],[-1.07,.75],[-.86,.24],[-1.20,-.35]],
+ sakura:[[-1.35,-.58],[-.91,-.76],[-.37,-.65],[.21,-.45],[.78,-.28],[1.30,-.13],[1.65,.24],[1.50,.71],[.99,.90],[.45,.7],[-.10,.43],[-.66,.53],[-1.20,.39],[-1.53,.03]],
+ highland:[[-1.35,-.70],[-.90,-.83],[-.49,-.48],[-.11,-.15],[.18,.26],[.70,.48],[1.07,.89],[.89,1.27],[.41,1.46],[-.11,1.35],[-.46,.98],[-.88,.70],[-1.31,.88],[-1.60,.42],[-1.68,-.16]],
+ pine:[[-1.33,-1.01],[-.81,-1.31],[-.30,-1.07],[.08,-.60],[.57,-.46],[1.10,-.74],[1.43,-.27],[1.38,.33],[1.08,.85],[.62,.92],[.20,.63],[-.11,.91],[-.57,1.10],[-1.04,.74],[-1.39,.23]],
+ metro:[[-1.23,-1.10],[-.66,-1.13],[-.08,-1.12],[.42,-.82],[.53,-.30],[.95,-.06],[1.38,.09],[1.45,.68],[1.13,1.13],[.53,1.13],[.05,.94],[-.04,.42],[-.50,.26],[-1.08,.28],[-1.37,-.19],[-1.37,-.7]]
+};
+
+class TerrainField {
+ constructor(def, seed = def.seed, options = {}) {
+  this.def = def; this.seed = (Math.trunc(seed) >>> 0) || 1;
+  this.options = generationOptions(options);
+  this.profile = REGION_PROFILES[def.theme] || REGION_PROFILES.pine;
+  this.half = Math.ceil(Math.max(def.rx,def.rz)*2.65/640)*640;
+  this.size = 257; this.step = this.half*2/(this.size-1);
+  const r = rng(this.seed ^ 0x24cf018a);
+  this.phase = r()*6.283; this.offset = [(r()-.5)*600,(r()-.5)*600];
+  this.riverWidth = def.theme==='nordic'?245: def.theme==='metro'?170: def.theme==='canyon'?54:85;
+  this.heights = null; this.flow = null; this.stats = null; this.execution = 'main-thread';
+ }
+ /** A continental river spine; tributaries are expressed in the same metric space. */
+ riverX(z) { return this.offset[0] + Math.sin(z/1150+this.phase)*370 + Math.sin(z/530+this.phase*.47)*135; }
+ channel(x,z) {
+  let d=Math.abs(x-this.riverX(z));
+  if(this.def.theme==='nordic') {
+   d=Math.min(d,Math.abs(x-(this.riverX(z)+Math.max(0,z+350)*.72))/1.23,
+     Math.abs(x-(this.riverX(z)-Math.max(0,z-700)*.87))/1.33);
+  } else if(this.def.theme==='metro') d=Math.min(d,Math.abs(z+460-Math.sin(x/1300)*300)*.95);
+  else if(this.def.theme==='alpine') d=Math.min(d,Math.abs(x-this.riverX(z)-Math.max(0,z-1350)*.55)/1.15);
+  return d;
+ }
+ /** Metric, non-radial macro relief. Isolated volcanoes/lochs are local features. */
+ rawHeight(x,z) {
+  const s=this.seed, w=this.def, theme=w.theme, ox=x+this.offset[0], oz=z+this.offset[1];
+  const warpX=(fbm(ox*.00032,oz*.00032,s+11,3)-.44)*620;
+  const warpZ=(fbm(ox*.00032+30,oz*.00032-20,s+47,3)-.44)*620;
+  const a=ox+warpX,b=oz+warpZ,n=fbm(a*.00059,b*.00059,s,5),detail=fbm(a*.003,b*.003,s+71,3);
+  const ridge=(1-Math.abs(2*fbm(a*.00074,b*.00074,s+173,4)-1))**3;
+  const d=this.channel(x,z),width=this.riverWidth;
+  const bank=smooth(width*.75,width+300,d),mount=smooth(width+120,width+1600,d);
+  const relief=w.mountains*this.options.relief;
+  let h;
+  if(theme==='alpine') h=w.water-20+bank*76+mount*(ridge*.82+n*.18)*relief+bank*(detail-.44)*30;
+  else if(theme==='coast') {
+   const shore=-540+Math.sin(z/890+this.phase)*365+Math.sin(z/320)*105;
+   const inland=x-shore;
+   h=w.water-42+smooth(-105,170,inland)*103+smooth(160,2100,inland)*(n*.52+ridge*.48)*relief+(detail-.45)*33;
+   // Isolated offshore stacks, not an island rim.
+   const islands=noise2(a*.0013,b*.0013,s+304);
+   h+=smooth(.64,.88,islands)*smooth(-160,-650,inland)*175;
+  } else if(theme==='nordic') h=w.water-85+smooth(width*.83,width+270,d)*175+mount*(ridge*.8+n*.35)*relief+(detail-.4)*24*bank;
+  else if(theme==='canyon') {
+   const mesa=(n*.45+ridge*.45)*relief;
+   const terrace=Math.floor(mesa/34)*34+smooth(.72,1,(mesa/34)%1)*34;
+   h=w.water-13+bank*100+smooth(width+90,width+800,d)*(90+terrace)+(detail-.44)*25;
+  } else if(theme==='sakura') {
+   const volcano=Math.max(0,1-Math.hypot((x+2050)/2300,(z-2900)/2300));
+   const crater=smooth(.84,1,volcano)*260;
+   const field=bank*(43+(n-.4)*70+detail*12);
+   h=w.water-12+field+volcano**1.55*relief*1.9-crater+smooth(3200,6000,z)*(n+ridge)*relief*.45;
+  } else if(theme==='highland') {
+   const loch=Math.min(Math.hypot((x+700)/440,(z-650)/1850),Math.hypot((x+2200)/380,(z+1200)/1150));
+   const drumlin=(.5+.5*Math.sin(a*.0018+b*.0008))**2;
+   h=w.water+36+(n*.55+drumlin*.25+ridge*.35)*relief*.66;
+   h=lerp(w.water-22,h,smooth(.68,1.48,loch));
+   h=lerp(w.water-7,h,smooth(45,300,d));
+  } else if(theme==='metro') h=w.water-10+smooth(width*.8,width+120,d)*(32+n*38)+smooth(2400,5000,z)*ridge*150;
+  else h=w.water-10+bank*49+mount*(n*.65+ridge*.28)*relief*.65+(detail-.43)*25*bank;
+  return h;
+ }
+ prepare() {
+  if(this.heights) return this;
+  const start=performance.now(),n=this.size,step=this.step,h=new Float32Array(n*n);
+  for(let z=0;z<n;z++) for(let x=0;x<n;x++) h[z*n+x]=this.rawHeight(x*step-this.half,z*step-this.half);
+  const erosion=this.options.erosion;
+  // Conservative thermal transport: every removal has a corresponding deposit.
+  // Talus is measured in metres per cell, not resolution-dependent height units.
+  const delta=new Float32Array(h.length),talus=step*.58;
+  for(let iteration=0;iteration<5;iteration++) {
+   delta.fill(0);
+   for(let z=1;z<n-1;z++) for(let x=1;x<n-1;x++) {
+    const i=z*n+x;
+    for(const j of [i+1,i+n]) {
+     const difference=h[i]-h[j],excess=Math.abs(difference)-talus;
+     if(excess>0) {const move=Math.sign(difference)*excess*.11*erosion;delta[i]-=move;delta[j]+=move;}
+    }
+   }
+   for(let i=0;i<h.length;i++) h[i]+=delta[i];
+  }
+  // Deterministic Lagrangian droplets: inertia, sediment capacity, erosion,
+  // deposition and evaporation. Bounded lifetime and a low sea-level floor.
+  const random=rng(this.seed^0x68bc21eb),drops=Math.round(9000*erosion);
+  const sample=(x,z)=>{const ix=Math.floor(x),iz=Math.floor(z),u=x-ix,v=z-iz,i=iz*n+ix;
+   const a=h[i],b=h[i+1],c=h[i+n],d=h[i+n+1];
+   return {y:lerp(lerp(a,b,u),lerp(c,d,u),v),gx:lerp(b-a,d-c,v),gz:lerp(c-a,d-b,u),i,u,v};};
+  const deposit=(p,amount)=>{h[p.i]+=amount*(1-p.u)*(1-p.v);h[p.i+1]+=amount*p.u*(1-p.v);h[p.i+n]+=amount*(1-p.u)*p.v;h[p.i+n+1]+=amount*p.u*p.v;};
+  for(let k=0;k<drops;k++) {
+   let x=2+random()*(n-5),z=2+random()*(n-5),dx=0,dz=0,water=1,speed=1,sediment=0;
+   for(let age=0;age<38;age++) {
+    const p=sample(x,z);dx=dx*.28-p.gx*.72;dz=dz*.28-p.gz*.72;
+    const len=Math.hypot(dx,dz);if(len<1e-5) break;dx/=len;dz/=len;
+    const nx=x+dx,nz=z+dz;
+    if(nx<1||nz<1||nx>n-3||nz>n-3) {deposit(p,sediment);sediment=0;break;}
+    const q=sample(nx,nz),dh=q.y-p.y,capacity=Math.max(-dh,.04)*speed*water*2.4;
+    if(dh>0||sediment>capacity) {const amount=dh>0?Math.min(dh,sediment):(sediment-capacity)*.24;deposit(p,amount);sediment-=amount;}
+    else {const amount=Math.min((capacity-sediment)*.12,Math.max(0,-dh),Math.max(0,p.y-this.def.water+8),2.3);deposit(p,-amount);sediment+=amount;}
+    speed=Math.sqrt(Math.max(.04,speed*speed-dh*.12));water*=.965;x=nx;z=nz;
+    if(water<.1||q.y<this.def.water-3) break;
+   }
+   // Do not leak remaining sediment when a droplet terminates.
+   if(sediment>0) deposit(sample(x,z),sediment);
+  }
+  this.heights=h;
+  // D8 flow accumulation descending in height is acyclic. Used as a biome and
+  // drainage mask; it is not advertised as a fluid simulation.
+  const flow=new Float32Array(h.length).fill(1),order=Array.from(h.keys()).sort((a,b)=>h[b]-h[a]);
+  for(const i of order) {
+   const x=i%n,z=Math.floor(i/n);if(x===0||z===0||x===n-1||z===n-1) continue;
+   let next=i,best=0;
+   for(const [dx,dz] of [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]]) {
+    const j=i+dz*n+dx,slope=(h[i]-h[j])/(dx&&dz?Math.SQRT2:1);
+    if(slope>best) {best=slope;next=j;}
+   }
+   if(next!==i) flow[next]+=flow[i];
+  }
+  this.flow=flow;let min=Infinity,max=-Infinity,sum=0;
+  for(const y of h) {min=Math.min(min,y);max=Math.max(max,y);sum+=y;}
+  this.stats={min,max,mean:sum/h.length,cells:h.length,droplets:drops,milliseconds:performance.now()-start};
+  return this;
+ }
+ interpolate(values,x,z) {
+  const u=clamp((x+this.half)/this.step,0,this.size-1.000001),v=clamp((z+this.half)/this.step,0,this.size-1.000001),ix=Math.floor(u),iz=Math.floor(v),i=iz*this.size+ix;
+  return lerp(lerp(values[i],values[i+1],u-ix),lerp(values[i+this.size],values[i+this.size+1],u-ix),v-iz);
+ }
+ height(x,z) {return this.heights&&Math.abs(x)<=this.half&&Math.abs(z)<=this.half?this.interpolate(this.heights,x,z):this.rawHeight(x,z);}
+ climate(x,z,height=this.height(x,z)) {
+  const drainage=this.flow?clamp(Math.log2(this.interpolate(this.flow,x,z)+1)/10,0,1):0;
+  const moisture=clamp(fbm(x*.0008,z*.0008,this.seed+983,3)*.8+(1-smooth(70,900,this.channel(x,z)))*.42+drainage*.25,0,1);
+  const slope=Math.hypot(this.height(x-8,z)-this.height(x+8,z),this.height(x,z-8)-this.height(x,z+8))/16;
+  return {moisture,drainage,slope,temperature:clamp(.88-height/1700,0,1)};
+ }
+}
+
+/** Terrain-aware corridor survey; cyclic grade projection gives a continuous railway. */
+function surveyRoute(def, terrain) {
+ const random=rng(terrain.seed^0x72eb4d13),profile=terrain.profile;
+ const template=CORRIDORS[def.theme]||CORRIDORS.pine;
+ const sx=def.rx*(1.18+random()*.16),sz=def.rz*(1.18+random()*.18);
+ const raw=template.map(([x,z],i)=>[x*sx+(random()-.5)*140,z*sz+(random()-.5)*140]);
+ const controls=[];
+ for(let i=0;i<raw.length;i++) {
+  const p=raw[i],prev=raw[(i+raw.length-1)%raw.length],next=raw[(i+1)%raw.length];
+  const dx=next[0]-prev[0],dz=next[1]-prev[1],len=Math.hypot(dx,dz),nx=-dz/len,nz=dx/len;
+  // Penalize earthworks and cross-slope while retaining the authored corridor.
+  let best=p,bestCost=Infinity;
+  for(let lane=-2;lane<=2;lane++) {
+   const x=p[0]+nx*lane*48,z=p[1]+nz*lane*48,h=terrain.height(x,z);
+   const slope=Math.abs(terrain.height(x+nx*18,z+nz*18)-terrain.height(x-nx*18,z-nz*18));
+   const cost=Math.abs(h-def.railY)*.32+slope*.75+lane*lane*14+(h<def.water?22:0);
+   if(cost<bestCost) {bestCost=cost;best=[x,z];}
+  }
+  controls.push([best[0],Math.max(def.water+12,terrain.height(...best)+1.9),best[1]]);
+ }
+ // Smooth the vertical alignment, then project adjacent grades. Doing both
+ // forward and reverse passes also constrains the seam of the circuit.
+ for(let pass=0;pass<12;pass++) {
+  const heights=controls.map(p=>p[1]);
+  for(let i=0;i<controls.length;i++) controls[i][1]=heights[i]*.5+(heights[(i+1)%heights.length]+heights[(i+heights.length-1)%heights.length])*.25;
+ }
+ for(let pass=0;pass<40;pass++) for(let i=0;i<controls.length;i++) {
+  const a=controls[i],b=controls[(i+1)%controls.length],limit=Math.hypot(b[0]-a[0],b[2]-a[2])*profile.grade*.72;
+  const excess=Math.abs(a[1]-b[1])-limit;
+  if(excess>0) {const shift=Math.sign(a[1]-b[1])*excess*.5;a[1]-=shift;b[1]+=shift;}
+ }
+ return controls;
+}
+
+return {GENERATOR_VERSION,REGION_PROFILES,generationOptions,TerrainField,surveyRoute};
 })();
 // ---- src/geometry.js ----
 const __m_src_geometry_js = (() => {
@@ -362,7 +630,7 @@ function pineGeometry(){
 function foliageGeometry(){const base=sphereGeometry(14,9),v=base.vertices;for(let i=0;i<v.length;i+=8){const n=[v[i],v[i+1],v[i+2]],r=.83+.11*Math.sin(n[0]*34+n[1]*21)+.12*Math.sin(n[2]*27+n[1]*35);v[i]*=r;v[i+1]*=r;v[i+2]*=r;}return base;}
 function bodyGeometry(){const b=new MeshBuilder(),ring=[[-.42,-.5],[.42,-.5],[.5,-.36],[.5,.31],[.4,.5],[-.4,.5],[-.5,.31],[-.5,-.36]];for(let i=0;i<ring.length;i++){const a=ring[i],c=ring[(i+1)%ring.length];b.quad([a[0],a[1],-.5],[c[0],c[1],-.5],[c[0],c[1],.5],[a[0],a[1],.5]);b.tri([0,0,.5],[a[0],a[1],.5],[c[0],c[1],.5],[0,0,1]);b.tri([0,0,-.5],[c[0],c[1],-.5],[a[0],a[1],-.5],[0,0,-1]);}return b.geometry();}
 function noseGeometry(){const b=new MeshBuilder();const rings=[[-.5,.48,.5,0],[.05,.45,.43,-.04],[.5,.24,.15,-.23],[.62,.09,.09,-.24]];const sides=12;for(let j=0;j<rings.length-1;j++){const [z,r,h,y]=rings[j],[z1,r1,h1,y1]=rings[j+1];for(let i=0;i<sides;i++){const t=i/sides*TAU,u=(i+1)/sides*TAU;b.quad([Math.cos(t)*r,Math.sin(t)*h+y,z],[Math.cos(u)*r,Math.sin(u)*h+y,z],[Math.cos(u)*r1,Math.sin(u)*h1+y1,z1],[Math.cos(t)*r1,Math.sin(t)*h1+y1,z1]);}}return b.geometry();}
-const PRIMITIVES={box:boxGeometry(),cylinder:cylinderGeometry(18),cone:cylinderGeometry(12,0),sphere:sphereGeometry(),pine:pineGeometry(),pineFar:pineFarGeometry(),foliage:foliageGeometry(),body:bodyGeometry(),nose:noseGeometry()};
+const PRIMITIVES={box:boxGeometry(),cylinder:cylinderGeometry(18),cone:cylinderGeometry(12,0),sphere:sphereGeometry(),pine:pineGeometry(),pineFar:pineFarGeometry(),foliage:foliageGeometry(),foliageFar:sphereGeometry(7,5),body:bodyGeometry(),nose:noseGeometry()};
 /** One instance = model matrix (64 B), linear material tint (16 B), material parameters (16 B). */
 class Batch {
  constructor(geometry,{center=[0,0,0],radius=1e6,maxDistance=12000,castShadow=true,dynamic=false}={}){this.geometry=geometry;this.center=center;this.radius=radius;this.maxDistance=maxDistance;this.castShadow=castShadow;this.dynamic=dynamic;this.items=[];this.data=null;this.count=0;this.dirty=true;this.gpuBuffer=null;this.glBuffer=null;this.capacity=0;}
@@ -374,18 +642,297 @@ class Batch {
 }
 class SceneBuilder {
  constructor(){this.batches=[];this.cells=new Map();this.geometry=PRIMITIVES;}
- instance(name,p,scale,color,props=[0,.7,0,0],yaw=0,pitch=0,roll=0){const cx=Math.floor(p[0]/480),cz=Math.floor(p[2]/480),key=`${name}:${cx}:${cz}`;let batch=this.cells.get(key);if(!batch){batch=new Batch(this.geometry[name],{center:[cx*480+240,p[1],cz*480+240],radius:520,maxDistance:name==='pine'||name==='foliage'?3400:4200});this.cells.set(key,batch);this.batches.push(batch);}batch.add(transform(p,scale,yaw,pitch,roll),color,props);return batch;}
- oriented(name,matrix,color,props=[0,.7,0,0]){const p=[matrix[12],matrix[13],matrix[14]],cx=Math.floor(p[0]/480),cz=Math.floor(p[2]/480),key=`${name}:${cx}:${cz}`;let batch=this.cells.get(key);if(!batch){batch=new Batch(this.geometry[name],{center:[cx*480+240,p[1],cz*480+240],radius:520,maxDistance:3600});this.cells.set(key,batch);this.batches.push(batch);}batch.add(matrix,color,props);return batch;}
+ instance(name,p,scale,color,props=[0,.7,0,0],yaw=0,pitch=0,roll=0){const cx=Math.floor(p[0]/480),cz=Math.floor(p[2]/480),key=`${name}:${cx}:${cz}`;let batch=this.cells.get(key);if(!batch){batch=new Batch(this.geometry[name],{center:[cx*480+240,p[1],cz*480+240],radius:520,maxDistance:name==='pine'||name==='foliage'?3400:4200});this.cells.set(key,batch);this.batches.push(batch);}batch.radius=Math.max(batch.radius,Math.hypot(p[0]-batch.center[0],p[1]-batch.center[1],p[2]-batch.center[2])+Math.hypot(...scale)*.6);batch.add(transform(p,scale,yaw,pitch,roll),color,props);return batch;}
+ oriented(name,matrix,color,props=[0,.7,0,0]){const p=[matrix[12],matrix[13],matrix[14]],cx=Math.floor(p[0]/480),cz=Math.floor(p[2]/480),key=`${name}:${cx}:${cz}`;let batch=this.cells.get(key);if(!batch){batch=new Batch(this.geometry[name],{center:[cx*480+240,p[1],cz*480+240],radius:520,maxDistance:3600});this.cells.set(key,batch);this.batches.push(batch);}batch.radius=Math.max(batch.radius,Math.hypot(p[0]-batch.center[0],p[1]-batch.center[1],p[2]-batch.center[2])+Math.hypot(matrix[0],matrix[1],matrix[2],matrix[4],matrix[5],matrix[6],matrix[8],matrix[9],matrix[10])*.6);batch.add(matrix,color,props);return batch;}
  segment(a,b,width,color,props=[0,.65,0,0],depth=width){const mid=mul(add(a,b),.5),m=frameMatrix(mid,sub(b,a),[width,depth,length(sub(b,a))]);return this.oriented('box',m,color,props);}
  mesh(geometry,center=[0,0,0],radius=1000,props=[0,.8,0,0],color=[1,1,1,1]){const batch=new Batch(geometry,{center,radius});batch.add(transform([0,0,0]),color,props).finish();this.batches.push(batch);return batch;}
- finish(){const lod=[];for(const b of this.cells.values()){b.finish();if(b.geometry===this.geometry.pine){b.lodNear=600;const far=new Batch(this.geometry.pineFar,{center:b.center,radius:b.radius,maxDistance:b.maxDistance});far.data=b.data;far.count=b.count;far.lodFar=600;lod.push(far);}}this.batches.push(...lod);this.cells.clear();return this.batches;}
+ finish(){const lod=[];for(const b of this.cells.values()){b.finish();if(b.geometry===this.geometry.pine||b.geometry===this.geometry.foliage){const isPine=b.geometry===this.geometry.pine;b.lodNear=isPine?600:700;const far=new Batch(isPine?this.geometry.pineFar:this.geometry.foliageFar,{center:b.center,radius:b.radius,maxDistance:b.maxDistance});far.data=b.data;far.count=b.count;far.lodFar=b.lodNear;lod.push(far);}}this.batches.push(...lod);this.cells.clear();return this.batches;}
 }
 
 return {Geometry,MeshBuilder,boxGeometry,cylinderGeometry,sphereGeometry,pineFarGeometry,pineGeometry,foliageGeometry,bodyGeometry,noseGeometry,PRIMITIVES,Batch,SceneBuilder};
 })();
+// ---- src/world-detail.js ----
+const __m_src_world_detail_js = (() => {
+const {Geometry, MeshBuilder, PRIMITIVES, Batch, sphereGeometry} = __m_src_geometry_js;
+const {rng, hash2, noise2, fbm, hex, clamp, smooth, lerp, norm, add, sub, mul, transform, frameMatrix, mat4Mul, TAU} = __m_src_math_js;
+/** Expedition scene construction. All placement consumes named, deterministic streams. */
+
+
+
+const STONE=hex('#9a998d'),TIMBER=hex('#72624b'),STEEL=hex('#4c6266'),WHITE=hex('#e6e4d6');
+const yieldUI=()=>new Promise(resolve=>setTimeout(resolve,0));
+
+function rockGeometry() {
+ const g=sphereGeometry(10,7),v=g.vertices;
+ for(let i=0;i<v.length;i+=8) {const x=v[i],y=v[i+1],z=v[i+2],r=.83+noise2(x*7+y*3,z*7,416)*.43;v[i]*=r;v[i+1]*=r;v[i+2]*=r;}
+ // Recompute area-weighted vertex normals after displacement.
+ for(let i=0;i<v.length;i+=8) v[i+3]=v[i+4]=v[i+5]=0;
+ for(let i=0;i<g.indices.length;i+=3) {
+  const a=g.indices[i]*8,b=g.indices[i+1]*8,c=g.indices[i+2]*8;
+  const u=[v[b]-v[a],v[b+1]-v[a+1],v[b+2]-v[a+2]],w=[v[c]-v[a],v[c+1]-v[a+1],v[c+2]-v[a+2]];
+  const n=[u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0]];
+  for(const j of [a,b,c]) for(let k=0;k<3;k++) v[j+3+k]+=n[k];
+ }
+ for(let i=0;i<v.length;i+=8) {const n=norm([v[i+3],v[i+4],v[i+5]]);v.set(n,i+3);}
+ return g;
+}
+function grassGeometry(fern=false) {
+ const b=new MeshBuilder(),random=rng(fern?27:71);
+ for(let i=0;i<(fern?8:11);i++) {
+  const angle=random()*TAU,h=.5+random()*.5,x=(random()-.5)*.8,z=(random()-.5)*.8;
+  const dir=[Math.cos(angle),0,Math.sin(angle)],side=[-dir[2],0,dir[0]];
+  if(fern) {
+   for(let j=0;j<6;j++) {const t=j/6,p=[x+dir[0]*t*.8,h*Math.sin(t*2.1),z+dir[2]*t*.8],tip=add(p,mul(dir,.24)),width=(1-t)*.28;
+    b.tri(add(p,mul(side,width)),p,tip);b.tri(p,add(p,mul(side,-width)),tip);}
+  } else {
+   const root=[x,0,z],mid=[x+dir[0]*.16,h*.65,z+dir[2]*.16],tip=[x+dir[0]*.38,h,z+dir[2]*.38],width=.032;
+   b.quad(add(root,mul(side,width)),add(root,mul(side,-width)),add(mid,mul(side,-width*.65)),add(mid,mul(side,width*.65)));
+   b.tri(add(mid,mul(side,width*.65)),add(mid,mul(side,-width*.65)),tip);
+  }
+ }
+ return b.geometry();
+}
+function flowerGeometry() {
+ const b=new MeshBuilder();for(let i=0;i<5;i++){const a=i*TAU/5,c=(i+1)*TAU/5;
+  b.tri([0,.6,0],[Math.cos(a)*.18,.64,Math.sin(a)*.18],[Math.cos(c)*.18,.64,Math.sin(c)*.18]);}
+ return b.geometry();
+}
+PRIMITIVES.boulder=rockGeometry();PRIMITIVES.grass=grassGeometry();PRIMITIVES.fern=grassGeometry(true);PRIMITIVES.flower=flowerGeometry();
+
+function terrainTile(world,x0,z0,span,n) {
+ const vertices=[],indices=[],field=world.terrain,step=span/n;
+ let lo=Infinity,hi=-Infinity;
+ for(let z=0;z<=n;z++) for(let x=0;x<=n;x++) {
+  const wx=x0+x*step,wz=z0+z*step,y=world.height(wx,wz),e=Math.max(4,step*.22);
+  const normal=norm([world.height(wx-e,wz)-world.height(wx+e,wz),2*e,world.height(wx,wz-e)-world.height(wx,wz+e)]);
+  const climate=field.climate(wx,wz,y);vertices.push(wx,y,wz,...normal,climate.moisture,climate.drainage);lo=Math.min(lo,y);hi=Math.max(hi,y);
+ }
+ for(let z=0;z<n;z++) for(let x=0;x<n;x++) {const i=z*(n+1)+x;indices.push(i,i+n+1,i+1,i+1,i+n+1,i+n+2);}
+ // Skirts conceal T-junction cracks where coarse and fine tiles meet.
+ const perimeter=[];for(let x=0;x<=n;x++)perimeter.push(x);for(let z=1;z<=n;z++)perimeter.push(z*(n+1)+n);
+ for(let x=n-1;x>=0;x--)perimeter.push(n*(n+1)+x);for(let z=n-1;z>0;z--)perimeter.push(z*(n+1));
+ for(let j=0;j<perimeter.length;j++) {
+  const a=perimeter[j],b=perimeter[(j+1)%perimeter.length],i=vertices.length/8;
+  const av=vertices.slice(a*8,a*8+8),bv=vertices.slice(b*8,b*8+8);av[1]-=32;bv[1]-=32;
+  vertices.push(...av,...bv);indices.push(a,b,i,i,b,i+1);
+ }
+ const batch=world.builder.mesh(new Geometry(vertices,indices),[x0+span/2,(lo+hi)/2,z0+span/2],Math.hypot(span*.71,(hi-lo)*.5)+40,[1,.95,0,0]);
+ batch.maxDistance=15000;return batch;
+}
+
+async function buildExpeditionTerrain(world,onProgress=()=>{}) {
+ const f=world.terrain,tile=640,count=f.half/tile;let done=0;
+ for(let z=-count;z<count;z++) {
+  for(let x=-count;x<count;x++) {
+   const cx=x*tile+tile*.5,cz=z*tile+tile*.5;
+   const near=world.network.nearest(cx,cz,850),fine=!!near;
+   const batch=terrainTile(world,x*tile,z*tile,tile,fine?32:12);
+   if(fine) {batch.lodNear=3000;const far=terrainTile(world,x*tile,z*tile,tile,8);far.lodFar=3000;far.castShadow=false;}
+   done++;
+  }
+  if(z%3===0) {onProgress('Eroding ridges & surveying drainage',.13+.19*done/(count*count*4));await yieldUI();}
+ }
+ world.features.terrainTiles=done;world.features.terrainCells=f.heights.length;
+}
+
+function inSettlement(world,x,z) {
+ for(const st of world.stations) {
+  const p=world.network.edges.get(st.edge).at(st.s-80),dx=x-p.p[0],dz=z-p.p[2];
+  const along=dx*p.f[0]+dz*p.f[2],across=dx*p.right[0]+dz*p.right[2];
+  if(along>-340&&along<320&&across>-28&&across<330)return true;
+ }
+ return false;
+}
+function canopy(world,p,h,variation,species) {
+ const b=world.builder,w=world.def;
+ const birch=species==='birch',cherry=species==='cherry',oak=species==='oak';
+ b.instance('cylinder',add(p,[0,h*.38,0]),[h*(oak?.053:.032),h*.76,h*.032],hex(birch?'#bfc4b5':'#63533f'),[6,.93,0,0]);
+ const color=hex(cherry?'#dfa9bc':birch?'#8d9f58':variation>.5?'#526f3b':'#3e6544');
+ for(let i=0;i<5;i++) {
+  const angle=i*2.399+variation*5,r=h*(oak?.26:.16),end=add(p,[Math.cos(angle)*r,h*(.61+(i%3)*.08),Math.sin(angle)*r]);
+  b.segment(add(p,[0,h*.40,0]),end,h*.018,TIMBER,[6,.9,0,0]);
+  b.instance('foliage',end,[h*.44,h*(oak?.29:.38),h*.42],color,[5,.95,0,0],angle);
+ }
+ if(birch) for(let y=1;y<h*.55;y+=1.3) b.instance('box',add(p,[0,y,.01]),[h*.04,.09,h*.04],hex('#636d5d'),[0,1,0,0]);
+}
+function cactus(world,p,h,v) {
+ const b=world.builder,color=hex(v>.5?'#718258':'#83906a');h*=.35;
+ b.instance('cylinder',add(p,[0,h*.5,0]),[.55,h,.55],color,[6,.96,0,0]);
+ b.instance('sphere',add(p,[0,h,0]),[.55,.55,.55],color);
+ for(const side of [-1,1]) {const y=h*(side<0?.4:.65),x=side*(.8+v*.6);
+  b.segment(add(p,[0,y,0]),add(p,[x,y,0]),.35,color,[6,.9,0,0]);
+  b.instance('cylinder',add(p,[x,y+h*.16,0]),[.34,h*.32,.34],color,[6,.95,0,0]);
+  b.instance('sphere',add(p,[x,y+h*.32,0]),[.34,.4,.34],color);
+ }
+}
+function plant(world,x,z,variation,climate) {
+ const h=world.height(x,z),p=[x,h,z],theme=world.def.theme,b=world.builder;
+ const size=9+hash2(Math.floor(x),Math.floor(z),world.seed+51)*18;
+ if(theme==='canyon') {if(variation>.32)cactus(world,p,size,variation);else canopy(world,p,size*.45,variation,'oak');}
+ else if(theme==='sakura'&&variation>.51) canopy(world,p,size*.69,variation,'cherry');
+ else if(theme==='sakura'&&variation<.17) {
+  for(let i=0;i<5;i++){const px=x+Math.sin(i*2.4)*1.1,pz=z+Math.cos(i*2.4)*1.1;b.instance('cylinder',[px,h+size*.4,pz],[.15,size*.8,.15],hex('#78835b'));b.instance('foliage',[px,h+size*.7,pz],[2.1,size*.4,2.1],hex('#729653'),[5,.98,0,0]);}
+ } else if((['pine','coast','metro'].includes(theme)&&variation>.38)||(theme==='nordic'&&variation>.82)) canopy(world,p,size,variation,variation>.75?'birch':'oak');
+ else world.tree(p,size,variation);
+ world.features.trees++;
+}
+
+async function buildEcosystem(world,onProgress=()=>{}) {
+ const f=world.terrain,b=world.builder,w=world.def,random=rng(world.seed^0x5dd715ef);
+ const spacing=f.profile.spacing/Math.sqrt(f.options.vegetation),span=Math.max(w.rx,w.rz)*2.05;
+ // Stratified, jittered cells avoid independent white-noise clumps and holes.
+ // Named hash streams keep unrelated landmarks stable when density changes.
+ let row=0;
+ for(let z=-span;z<span;z+=spacing) {
+  for(let x=-span;x<span;x+=spacing) {
+   const ix=Math.floor(x/spacing),iz=Math.floor(z/spacing),v=hash2(ix,iz,world.seed+7);
+   const px=x+spacing*(.15+.7*hash2(ix,iz,world.seed+11)),pz=z+spacing*(.15+.7*hash2(ix,iz,world.seed+19));
+   const h=world.baseHeight(px,pz);if(h<w.water+2||h>w.snowLine+30)continue;
+   const c=f.climate(px,pz,h),patch=noise2(px*.0018,pz*.0018,world.seed+911);
+   const chance=f.profile.forest*smooth(.14,.7,patch)*(.48+c.moisture);
+   if(v>chance||c.slope>.83||inSettlement(world,px,pz)||world.network.nearest(px,pz,16))continue;
+   plant(world,px,pz,hash2(ix,iz,world.seed+61),c);
+  }
+  if(++row%35===0){onProgress('Growing climate-aware forests',.74+.08*(z+span)/(2*span));await yieldUI();}
+ }
+ // Near-track ecological detail is distance-limited on the GPU, and never
+ // scatters into the loading gauge, platforms or streets.
+ const edges=[...world.network.edges.values()];
+ for(let i=0;i<6500*f.options.vegetation;i++) {
+  const e=edges[i%edges.length],pose=e.at(random()*e.length),side=random()>.5?1:-1,offset=12+random()**2*230;
+  const p=add(pose.p,mul(pose.right,side*offset));p[1]=world.height(p[0],p[2]);
+  if(p[1]<w.water+.8||p[1]>w.snowLine||inSettlement(world,p[0],p[2]))continue;
+  const c=f.climate(p[0],p[2],p[1]);if(c.slope>.74||world.network.nearest(p[0],p[2],8))continue;
+  const desert=w.theme==='canyon',heather=w.theme==='highland';
+  if(i%7===0) {
+   const batch=b.instance('foliage',add(p,[0,.7,0]),[1.4+random()*2,1.4,1.7],hex(heather?'#8b7182':desert?'#8f895d':'#597540'),[5,.94,0,0],random()*TAU);
+   batch.maxDistance=1000;world.features.shrubs++;
+  } else {
+   const name=c.moisture>.6&&!desert?'fern':'grass',scale=.55+random()*1.2;
+   const batch=b.instance(name,p,[scale*1.8,scale,scale*1.8],hex(desert?'#b5a06a':heather?'#8c895b':'#879459'),[5,.98,0,0],random()*TAU);
+   batch.maxDistance=300;batch.castShadow=false;
+   if(i%9===0&&!desert){const flower=b.instance('flower',p,[scale,scale,scale],hex(heather?'#b37eaa':i%2?'#dac99c':'#ccc4dc'),[5,.85,0,0]);flower.maxDistance=220;flower.castShadow=false;world.features.flowers++;}
+  }
+ }
+ for(let i=0;i<420;i++) {
+  const e=edges[i%edges.length],p=e.at(random()*e.length),pos=add(p.p,mul(p.right,(random()>.5?1:-1)*(25+random()*370)));
+  pos[1]=world.height(pos[0],pos[2]);if(pos[1]<w.water-1||inSettlement(world,pos[0],pos[2]))continue;
+  const size=1.3+random()**2*16;b.instance('boulder',add(pos,[0,size*.28,0]),[size,size*.82,size*1.2],hex(w.rock),[6,.98,0,0],random()*TAU);
+ }
+ world.features.ecosystemSeed=world.seed;
+}
+
+/** Long engineering structures respond to actual route-to-terrain clearances. */
+function buildCivilEngineering(world) {
+ const b=world.builder,theme=world.def.theme;
+ for(const edge of world.network.edges.values()) {
+  let inBridge=false;
+  for(let s=18;s<edge.length-30;s+=24) {
+   const p=edge.at(s),height=world.baseHeight(p.p[0],p.p[2]),gap=p.p[1]-height;
+   if(gap>14) {
+    if(!inBridge)world.features.landmarks++;inBridge=true;
+    // Trussed deck and diagonals follow the railway, including the alternative.
+    if(['canyon','coast','metro'].includes(theme)) for(const side of [-1,1]) {
+     const a=world.railCross(edge.at(s-12),side*2.6,-1.5),c=world.railCross(edge.at(s+12),side*2.6,-1.5),lower=add(a,[0,-3.1,0]),end=add(c,[0,-3.1,0]);
+     b.segment(lower,end,.2,STEEL,[0,.65,.55,0]);b.segment(a,end,.17,STEEL,[0,.65,.55,0]);b.segment(lower,c,.17,STEEL,[0,.65,.55,0]);
+    } else {
+     // Masonry arch soffits rather than rectangular blocks alone.
+     for(const side of [-1,1]) for(let j=0;j<10;j++) {
+      const t=j/10*Math.PI,u=(j+1)/10*Math.PI;
+      const a=edge.at(s+Math.cos(t)*11),c=edge.at(s+Math.cos(u)*11);
+      b.segment(world.railCross(a,side*2.2,-11+Math.sin(t)*8),world.railCross(c,side*2.2,-11+Math.sin(u)*8),1.0,STONE,[6,.97,0,0],1.15);
+     }
+    }
+   }else {inBridge=false;if(height-p.p[1]>15&&s%72<24){world.features.cuttings++;for(const side of [-1,1]){
+    const pos=world.railCross(p,side*13,-.4);b.oriented('box',frameMatrix(add(pos,[0,2,0]),p.f,[.6,4,24.2]),STONE,[6,.94,0,0]);
+   }}}
+  }
+ }
+}
+function landmarkAnchor(world,fraction,side=1,distance=100) {
+ const edge=world.network.edges.get('return'),p=edge.at(edge.length*fraction),point=add(p.p,mul(p.right,side*distance));point[1]=world.height(point[0],point[2]);
+ return {p:point,yaw:Math.atan2(p.f[0],p.f[2]),rail:p};
+}
+function localParts(world,p,yaw) {
+ const base=transform(p,[1,1,1],yaw),b=world.builder;
+ return (g,position,size,color=STONE,props=[6,.93,0,0],rotation=[0,0,0])=>b.oriented(g,mat4Mul(base,transform(position,size,...rotation)),color,props);
+}
+function boats(world,z) {
+ const f=world.terrain,b=world.builder,x=f.riverX(z),water=world.def.water;
+ for(let i=0;i<3;i++) {
+  const p=[x+i*25,water+1,z+i*42],part=localParts(world,p,.3+i*.17);
+  part('body',[0,0,0],[5,2.2,15],hex('#476772'));part('box',[0,1.5,-1],[3.3,2.7,5],WHITE);
+  part('box',[0,2,1.55],[2.7,.9,.06],hex('#3c5961'),[3,.18,.3,0]);part('cylinder',[0,5,1],[.12,8,.12],STEEL);
+ }
+}
+function buildLandmarks(world) {
+ const w=world.def,b=world.builder,f=world.terrain,random=rng(world.seed^0x1a2789bc);
+ const a=landmarkAnchor(world,.26,1,110),part=localParts(world,a.p,a.yaw);
+ const names={alpine:'High-country cabins',coast:'Headland lighthouse',nordic:'Granite fjord',canyon:'Sandstone arch',sakura:'Five-tier temple',highland:'Ruined highland keep',pine:'Woodland sawmill',metro:'Container terminal'};
+ const eye=add(a.p,[Math.cos(a.yaw)*145,75,-Math.sin(a.yaw)*145]);eye[1]=Math.max(eye[1],world.height(eye[0],eye[2])+28);
+ world.viewpoints.push({name:names[w.theme],position:eye,target:add(a.p,[0,12,0])});
+ const overlook=[f.riverX(400)+750,0,950];overlook[1]=Math.max(w.water+380,world.height(overlook[0],overlook[2])+220);
+ world.viewpoints.push({name:'Watershed panorama',position:overlook,target:[f.riverX(400),w.water+70,400]});
+ if(w.theme==='alpine'||w.theme==='nordic') {
+  // Avalanche fences and high-country cabins on surveyed slopes.
+  for(let i=0;i<7;i++) {
+   const c=landmarkAnchor(world,.12+i*.07,-1,95+random()*80);
+   if(c.p[1]>w.water+4)world.buildHouse(c.p,[8,5,13],c.yaw);
+   for(let j=-3;j<=3;j++){const q=add(c.p,[j*7,0,30]);q[1]=world.height(q[0],q[2]);b.instance('box',add(q,[0,1.8,0]),[.22,3.6,.22],TIMBER);b.instance('box',add(q,[0,2,0]),[7.3,.16,.15],TIMBER);}
+  }
+  // Stepped, suspended waterfall ribbons placed against actual steep banks.
+  for(let i=0;i<4;i++) {
+   const c=landmarkAnchor(world,.18+i*.16,1,190),h=c.p[1],foot=add(c.p,[0,0,50]);foot[1]=world.height(foot[0],foot[2]);
+   if(h-foot[1]>14) {const mesh=new MeshBuilder();for(let j=0;j<8;j++){const t=j/8,u=(j+1)/8;const left=[c.p[0]-2,lerp(h,foot[1],t)+.25,lerp(c.p[2],foot[2],t)],right=[c.p[0]+2,left[1],left[2]],end=[foot[0]+2,lerp(h,foot[1],u)+.25,lerp(c.p[2],foot[2],u)];mesh.quad(left,right,end,[foot[0]-2,end[1],end[2]]);}const batch=b.mesh(mesh.geometry(),c.p,120,[9,.3,0,.18],hex('#c0dfe2'));batch.castShadow=false;world.features.waterfalls=(world.features.waterfalls||0)+1;}
+  }
+  if(w.theme==='nordic')boats(world,-900);
+ } else if(w.theme==='coast') {
+  // Sea-stack geology and breakwater harbour; coastline is not concentric.
+  for(let i=0;i<24;i++){const z=(random()-.5)*w.rz*4,x=-860+Math.sin(z/890+f.phase)*365;const h=25+random()*80;b.instance('boulder',[x,w.water+h*.28,z],[25+random()*45,h,35+random()*45],hex(w.rock),[6,.94,0,0],random()*TAU);}
+  for(let i=0;i<12;i++)part('box',[i*8,1,25],[8.1,2,10],STONE);
+  part('cylinder',[35,20,25],[9,40,9],WHITE);part('cylinder',[35,41,25],[11,2,11],hex('#8b5247'));part('sphere',[35,44,25],[6,4,6],hex('#f9dd98'),[4,.4,0,2]);
+ } else if(w.theme==='canyon') {
+  for(let i=0;i<32;i++){const c=landmarkAnchor(world,.05+random()*.9,random()>.5?1:-1,70+random()*240),h=12+random()*45;
+   b.instance('boulder',add(c.p,[0,h*.3,0]),[7+random()*10,h,8],hex('#ae7452'),[6,.99,0,0]);b.instance('boulder',add(c.p,[0,h*.78,0]),[13,7,11],hex('#be8f66'),[6,.99,0,0]);}
+  // A walk-through sandstone arch beside the line.
+  for(let i=0;i<20;i++){const angle=i/19*Math.PI;part('boulder',[Math.cos(angle)*26,8+Math.sin(angle)*29,0],[10,12,12],hex('#c18b65'));}
+ } else if(w.theme==='sakura') {
+  // Five-tier temple with progressively smaller, overhanging roofs.
+  for(let level=0;level<5;level++){const width=23-level*3,y=level*6;
+   part('box',[0,y+2.4,0],[width*.7,4.8,width*.7],hex('#9b654b'));part('body',[0,y+5.5,0],[width,2.3,width],hex('#435654'));
+   for(const x of [-1,1])for(const z of [-1,1])part('cylinder',[x*width*.32,y+2.5,z*width*.32],[.5,5,.5],hex('#7d4438'));
+  }
+  part('cylinder',[0,33,0],[.3,10,.3],hex('#b5a16b'));
+  for(let i=0;i<70;i++) {
+   const c=landmarkAnchor(world,.05+random()*.85,1,180+random()*250);if(c.p[1]<w.water+4)continue;
+   const pp=localParts(world,c.p,c.yaw);for(let j=0;j<3;j++){pp('box',[0,j*.23,j*9],[26,.2,8.5],hex(j%2?'#849957':'#a5ac67'));pp('box',[0,j*.23+.22,j*9+4.3],[27,.35,.55],hex('#7d8059'));}
+  }
+ } else if(w.theme==='highland') {
+  // Ruined keep, curtain walls, crenellations; deliberately unlike village houses.
+  for(const x of [-18,18])for(const z of [-18,18]){part('cylinder',[x,11,z],[11,22,11]);for(let i=0;i<8;i++){const t=i*TAU/8;part('box',[x+Math.cos(t)*4.8,23,z+Math.sin(t)*4.8],[1.5,2.5,1.5]);}}
+  for(const x of [-18,18])part('box',[x,7,0],[3,14,35]);for(const z of [-18,18])part('box',[0,7,z],[35,14,3]);
+  for(let x=-16;x<18;x+=4)part('box',[x,15,18],[2,2.5,3]);
+ } else if(w.theme==='pine') {
+  world.buildHouse(a.p,[18,9,35],a.yaw);
+  for(let i=0;i<60;i++)part('cylinder',[22+(i%6)*.9,.65+Math.floor(i/20)*.8,-12+Math.floor(i%20/6)*7],[.8,6.8,.8],TIMBER,[6,.97,0,0],[0,Math.PI/2,0]);
+  part('cylinder',[-12,4,9],[7,.6,7],TIMBER,[6,.97,0,0],[0,0,Math.PI/2]);
+  for(let i=0;i<12;i++) {const t=i*TAU/12;part('box',[-12,4+Math.sin(t)*3.1,9+Math.cos(t)*3.1],[1.5,.3,1.4],TIMBER,[6,.96,0,0],[0,t,0]);}
+ } else {
+  // Port cranes, stacked containers and industrial pipework diversify the skyline.
+  for(let i=0;i<4;i++){const x=i*42;part('box',[x,23,0],[3,46,3],hex('#ca9754'));part('box',[x,47,9],[3,2,68],hex('#ca9754'));part('cylinder',[x,34,38],[.13,25,.13],STEEL);part('box',[x,20,38],[3,2,3],STEEL);}
+  for(let i=0;i<45;i++)part('box',[i%9*8,1.5+Math.floor(i/18)*3.05,-24-Math.floor(i/9)*15],[6.8,3,12],hex(['#9b624a','#597582','#a99965'][i%3]));
+  boats(world,800);
+ }
+ world.features.landmarks+=1;
+}
+
+return {buildExpeditionTerrain,buildEcosystem,buildCivilEngineering,buildLandmarks};
+})();
 // ---- src/tracks.js ----
 const __m_src_tracks_js = (() => {
+const {TerrainField, surveyRoute} = __m_src_generation_js;
 const {clamp,lerp,mix3,norm,sub,add,mul,cross,length,catmull,mod,TAU} = __m_src_math_js;
+
 
 /** Arc-length parameterized, sampled railway edges. Drawing and physics use the same centerline. */
 class TrackEdge {
@@ -396,13 +943,44 @@ class TrackEdge {
 }
 function splineLoop(points,spacing=3){const result=[];for(let i=0;i<points.length;i++){const a=points[mod(i-1,points.length)],b=points[i],c=points[(i+1)%points.length],d=points[(i+2)%points.length],n=Math.max(8,Math.ceil(length(sub(c,b))/spacing));for(let j=0;j<n;j++)result.push(catmull(a,b,c,d,j/n));}result.push([...result[0]]);return result;}
 class RailNetwork {
- constructor(world,customPoints=null){this.world=world;this.switchBranch=false;this.edges=new Map();this.spatial=new Map();this.cell=100;let controls;
+ constructor(world,customPoints=null,options={}){this.world=world;this.switchBranch=false;this.edges=new Map();this.spatial=new Map();this.cell=100;let controls;
   if(customPoints?.length>=4){controls=customPoints.map(p=>[p.x,p.y,p.z]);}
+  else if(options.generationVersion!==2){controls=surveyRoute(world,options.terrain||new TerrainField(world,options.seed||world.seed,options.generation));}
   else{controls=[];for(let i=0;i<14;i++){const t=i/14*TAU;const radius=1+.085*Math.sin(t*3+.7)+.055*Math.cos(t*5);controls.push([Math.sin(t)*world.rx*radius,world.railY+Math.sin(t*2+.2)*world.gradeHeight+Math.cos(t*3)*world.gradeHeight*.2,Math.cos(t)*world.rz*radius]);}}
-  this.controls=controls.map(p=>({x:p[0],y:p[1],z:p[2]}));const all=splineLoop(controls);const a=Math.floor(all.length*.24),b=Math.floor(all.length*.43);const main=new TrackEdge('main',all.slice(a,b+1),world.limit);this.edges.set('approach',new TrackEdge('approach',all.slice(0,a+1),world.limit));this.edges.set('main',main);this.edges.set('return',new TrackEdge('return',all.slice(b),world.limit));
+  this.controls=controls.map(p=>({x:p[0],y:p[1],z:p[2]}));const all=splineLoop(controls);
+  if(options.generationVersion!==2&&!customPoints){
+   const terrain=options.terrain||new TerrainField(world,options.seed||world.seed,options.generation);
+   let best=0,score=Infinity;const count=all.length-1;
+   for(let i=0;i<count;i+=32){const p=all[i],q=all[(i+64)%count],h=terrain.height(p[0],p[2]),cost=Math.abs(p[1]-h-3)+Math.abs(q[1]-terrain.height(q[0],q[2])-3)*.6;
+    if(cost<score){best=i;score=cost;}}
+   const rotated=all.slice(0,count);all.length=0;for(let i=0;i<count;i++)all.push(rotated[(i+best)%count]);all.push([...all[0]]);
+  }
+  const a=Math.floor(all.length*.24),b=Math.floor(all.length*.43);const main=new TrackEdge('main',all.slice(a,b+1),world.limit);this.edges.set('approach',new TrackEdge('approach',all.slice(0,a+1),world.limit));this.edges.set('main',main);this.edges.set('return',new TrackEdge('return',all.slice(b),world.limit));
   const p0=all[a],p1=all[b],f0=norm(sub(all[a+2],all[a])),f1=norm(sub(all[b],all[b-2]));const span=length(sub(p1,p0));const branch=[];const c0=add(p0,mul(f0,span*.45)),c1=sub(p1,mul(f1,span*.45));for(let j=0;j<=Math.ceil(span/3);j++){const t=j/Math.ceil(span/3),u=1-t;branch.push([0,1,2].map(k=>u*u*u*p0[k]+3*u*u*t*c0[k]+3*u*t*t*c1[k]+t*t*t*p1[k]));}
+  if(options.generationVersion!==2&&!customPoints){
+   // A genuine scenic alternative follows the same corridor rather than a
+   // straight chord through the middle of every world. Zero endpoint derivative.
+   branch.length=0;
+   // Parallel offsets have a cusp when offset * curvature approaches one.
+   // Bound the entire excursion using sampled horizontal curvature, retaining
+   // a smooth sin-squared envelope rather than introducing local kinks.
+   let maxCurvature=0;
+   for(let j=a+1;j<b;j++) {
+    const p=all[j-1],q=all[j],r=all[j+1];
+    const ux=q[0]-p[0],uz=q[2]-p[2],vx=r[0]-q[0],vz=r[2]-q[2];
+    const lu=Math.hypot(ux,uz),lv=Math.hypot(vx,vz);
+    if(lu>1e-6&&lv>1e-6)maxCurvature=Math.max(maxCurvature,Math.hypot(vx/lv-ux/lu,vz/lv-uz/lu)/((lu+lv)*.5));
+   }
+   const excursion=Math.min(world.theme==='canyon'?200:130,.2/Math.max(1e-9,maxCurvature));
+   for(let j=a;j<=b;j++) {const t=(j-a)/(b-a),p=all[j],before=all[Math.max(0,j-1)],after=all[Math.min(all.length-1,j+1)],dx=after[0]-before[0],dz=after[2]-before[2],len=Math.hypot(dx,dz)||1;
+    const offset=Math.sin(Math.PI*t)**2*excursion;
+    branch.push([p[0]-dz/len*offset,p[1],p[2]+dx/len*offset]);
+   }
+  }
   this.edges.set('branch',new TrackEdge('branch',branch,Math.min(75,world.limit)));this.totalLength=this.edges.get('approach').length+main.length+this.edges.get('return').length;
   for(const e of this.edges.values())for(let s=0;s<=e.length;s+=15){const p=e.at(Math.min(s,e.length));this._index(p);}this.junction=this.edges.get('approach').at(this.edges.get('approach').length).p;
+  const xs=all.map(p=>p[0]),zs=all.map(p=>p[2]);this.bounds={minX:Math.min(...xs)-500,maxX:Math.max(...xs)+500,minZ:Math.min(...zs)-500,maxZ:Math.max(...zs)+500};
+  this.generationVersion=options.generationVersion===2?2:3;
  }
  _index(p){const key=`${Math.floor(p.p[0]/this.cell)},${Math.floor(p.p[2]/this.cell)}`;if(!this.spatial.has(key))this.spatial.set(key,[]);this.spatial.get(key).push(p);}
  next(id){return id==='approach'?(this.switchBranch?'branch':'main'):id==='return'?'approach':'return';}
@@ -521,6 +1099,8 @@ return {Train,Traffic,makeStations,Mission};
 })();
 // ---- src/world.js ----
 const __m_src_world_js = (() => {
+const {TerrainField, GENERATOR_VERSION} = __m_src_generation_js;
+const {buildExpeditionTerrain, buildEcosystem, buildLandmarks, buildCivilEngineering} = __m_src_world_detail_js;
 const {clamp,lerp,smooth,fbm,noise2,rng,hex,add,sub,mul,norm,cross,frameMatrix,transform,mat4Mul,pointTransform,TAU} = __m_src_math_js;
 const {Geometry,MeshBuilder,SceneBuilder,PRIMITIVES} = __m_src_geometry_js;
 const {RailNetwork} = __m_src_tracks_js;
@@ -529,23 +1109,41 @@ const {makeStations} = __m_src_physics_js;
 
 
 
+
+
 const C={rail:hex('#a0a4a0'),railSide:hex('#5f6663'),tie:hex('#837d6d'),ballast:hex('#8e9187'),concrete:hex('#c2beb0'),dark:hex('#333b38'),trunk:hex('#584b3b'),lamp:hex('#ffde9b')};
 class RailwayWorld {
- constructor(def,editor={}){this.def=def;this.editor={seed:def.seed,objects:[],heightEdits:[],stations:[],customTrack:null,electrified:true,...editor};this.seed=this.editor.seed;this.network=new RailNetwork(def,this.editor.customTrack);this.stations=makeStations(this.network,def,this.editor.stations);this.batches=[];this.signals=[];this.features={bridges:0,trees:0,buildings:0};this.builder=new SceneBuilder();this.heightCache=new Map();this.random=rng(this.seed);}
- baseHeight(x,z){const w=this.def,r=Math.hypot(x/w.rx,z/w.rz);const n=fbm(x*.00065,z*.00065,this.seed),detail=fbm(x*.004,z*.004,this.seed+43,3);const bank=smooth(.72,1.13,r);let h=w.water-16+bank*68;const mountain=smooth(1.05,1.72,r);let ridge=Math.pow(Math.abs(n-.48)*2.3,.8)*.60+detail*.42;h+=mountain*ridge*w.mountains;h+=bank*(detail-.45)*18;
+ constructor(def,editor={},preparedTerrain=null){this.def=def;this.editor={seed:def.seed,generationVersion:GENERATOR_VERSION,generation:{relief:1,vegetation:1,erosion:.65},objects:[],heightEdits:[],stations:[],customTrack:null,electrified:true,...editor};this.seed=this.editor.seed;this.terrain=this.editor.generationVersion===2?null:(preparedTerrain||new TerrainField(def,this.seed,this.editor.generation).prepare());this.network=new RailNetwork(def,this.editor.customTrack,{seed:this.seed,generationVersion:this.editor.generationVersion,terrain:this.terrain,generation:this.editor.generation});this.stations=makeStations(this.network,def,this.editor.stations);this.batches=[];this.signals=[];this.viewpoints=[];this.features={bridges:0,trees:0,buildings:0,shrubs:0,flowers:0,landmarks:0,cuttings:0};this.builder=new SceneBuilder();this.heightCache=new Map();this.random=rng(this.seed);}
+ static async create(def,editor={}) {
+  if(editor.generationVersion===2||typeof Worker==='undefined'||globalThis.RAILBOUND_STANDALONE)return new RailwayWorld(def,editor);
+  const terrain=new TerrainField(def,editor.seed||def.seed,editor.generation);
+  try {
+   const data=await new Promise((resolve,reject)=>{
+    const worker=new Worker('src/generation-worker.js',{type:'module'});
+    const timer=setTimeout(()=>{worker.terminate();reject(new Error('Terrain worker timed out'));},30000);
+    const finish=(fn,value)=>{clearTimeout(timer);worker.terminate();fn(value);};
+    worker.onmessage=e=>e.data.error?finish(reject,new Error(e.data.error)):finish(resolve,e.data);
+    worker.onerror=e=>finish(reject,new Error(e.message));
+    worker.postMessage({def,seed:terrain.seed,options:terrain.options});
+   });
+   terrain.heights=data.heights;terrain.flow=data.flow;terrain.stats=data.stats;terrain.execution='worker';
+  } catch {terrain.prepare();}
+  return new RailwayWorld(def,editor,terrain);
+ }
+ baseHeight(x,z){if(this.terrain){let h=this.terrain.height(x,z);for(const e of this.editor.heightEdits){const d=Math.hypot(x-e.x,z-e.z)/e.radius;if(d<1)h+=e.delta*(1-d*d)**2;}return h;}const w=this.def,r=Math.hypot(x/w.rx,z/w.rz);const n=fbm(x*.00065,z*.00065,this.seed),detail=fbm(x*.004,z*.004,this.seed+43,3);const bank=smooth(.72,1.13,r);let h=w.water-16+bank*68;const mountain=smooth(1.05,1.72,r);let ridge=Math.pow(Math.abs(n-.48)*2.3,.8)*.60+detail*.42;h+=mountain*ridge*w.mountains;h+=bank*(detail-.45)*18;
   if(w.theme==='canyon'){h=w.water-18+bank*86+mountain*(Math.floor(n*11)/11*.6+detail*.3)*w.mountains;}
   if(w.theme==='metro')h=w.water-8+bank*35+mountain*n*120;
   if(w.theme==='sakura')h=w.water-8+bank*42+mountain*ridge*w.mountains;
   for(const e of this.editor.heightEdits){const d=Math.hypot(x-e.x,z-e.z)/e.radius;if(d<1)h+=e.delta*(1-d*d)**2;}
   return h;
  }
- height(x,z){let h=this.baseHeight(x,z);const near=this.network.nearest(x,z,38);if(near){const bridge=near.p[1]-h>13;if(!bridge){const target=near.p[1]-.38;h=lerp(target,h,smooth(4.0,32,near.distance));}}
+ height(x,z){let h=this.baseHeight(x,z);const near=this.network.nearest(x,z,this.terrain?70:38);if(near){const bridge=near.p[1]-h>13;if(!bridge){const target=near.p[1]-.38;h=lerp(target,h,smooth(this.terrain?14:4,this.terrain?60:32,near.distance));}}
   for(const st of this.stations){const p=this.network.edges.get(st.edge).at(st.s-60),dx=x-p.p[0],dz=z-p.p[2];const along=dx*p.f[0]+dz*p.f[2],across=dx*p.right[0]+dz*p.right[2];if(across>1&&across<100&&Math.abs(along)<150){const t=smooth(100,150,Math.abs(along))*1+smooth(55,100,across);h=lerp(p.p[1]-.4,h,clamp(t,0,1));}}
   return h;
  }
- async build(onProgress=()=>{}){onProgress('Shaping terrain',.12);await new Promise(r=>setTimeout(r,0));this.buildTerrain();onProgress('Laying rail and bridges',.36);await new Promise(r=>setTimeout(r,0));this.buildTracks();onProgress('Building stations and villages',.56);await new Promise(r=>setTimeout(r,0));this.buildStations();this.buildTownscapes();onProgress('Planting forests',.73);await new Promise(r=>setTimeout(r,0));this.buildVegetation();this.buildDecorations();this.buildWater();this.batches=this.builder.finish();onProgress('Preparing the railway',.92);return this;}
+ async build(onProgress=()=>{}){onProgress('Shaping terrain',.12);await new Promise(r=>setTimeout(r,0));if(this.terrain)await buildExpeditionTerrain(this,onProgress);else this.buildTerrain();onProgress('Laying rail and bridges',.36);await new Promise(r=>setTimeout(r,0));this.buildTracks();if(this.terrain)buildCivilEngineering(this);onProgress('Building stations and villages',.56);await new Promise(r=>setTimeout(r,0));this.buildStations();this.buildTownscapes();onProgress('Planting forests',.73);await new Promise(r=>setTimeout(r,0));if(this.terrain){await buildEcosystem(this,onProgress);buildLandmarks(this);}else this.buildVegetation();this.buildDecorations();this.buildWater();this.batches=this.builder.finish();onProgress('Preparing the railway',.92);return this;}
  buildTerrain(){const b=this.builder,w=this.def,span=Math.max(w.rx,w.rz)*2.8,chunk=span/8,N=24;for(let iz=-8;iz<8;iz++)for(let ix=-8;ix<8;ix++){const verts=[],inds=[],x0=ix*chunk,z0=iz*chunk,step=chunk/N;for(let z=0;z<=N;z++)for(let x=0;x<=N;x++){const wx=x0+x*step,wz=z0+z*step,h=this.height(wx,wz);const e=5,n=norm([this.height(wx-e,wz)-this.height(wx+e,wz),2*e,this.height(wx,wz-e)-this.height(wx,wz+e)]);verts.push(wx,h,wz,...n,wx*.01,wz*.01);}for(let z=0;z<N;z++)for(let x=0;x<N;x++){const i=z*(N+1)+x;inds.push(i,i+N+1,i+1,i+1,i+N+1,i+N+2);}const center=[x0+chunk/2,this.baseHeight(x0+chunk/2,z0+chunk/2),z0+chunk/2];const batch=b.mesh(new Geometry(verts,inds),center,chunk*1.8,[1,.95,0,0]);batch.maxDistance=15000;}}
- buildWater(){const w=this.def,b=this.builder;const mesh=new MeshBuilder();const s=Math.max(w.rx,w.rz)*2.5;mesh.quad([-s,w.water,s],[s,w.water,s],[s,w.water,-s],[-s,w.water,-s],[0,1,0]);const batch=b.mesh(mesh.geometry(),[0,w.water,0],s*1.5,[2,.12,.1,0],hex(w.waterColor));batch.castShadow=false;batch.maxDistance=14000;}
+ buildWater(){const w=this.def,b=this.builder;const mesh=new MeshBuilder();const s=this.terrain?this.terrain.half:Math.max(w.rx,w.rz)*2.5;mesh.quad([-s,w.water,s],[s,w.water,s],[s,w.water,-s],[-s,w.water,-s],[0,1,0]);const batch=b.mesh(mesh.geometry(),[0,w.water,0],s*1.5,[2,.12,.1,0],hex(w.waterColor));batch.castShadow=false;batch.maxDistance=14000;}
  railCross(p,offset,y){return [p.p[0]+p.right[0]*offset,p.p[1]+y,p.p[2]+p.right[2]*offset];}
  buildTracks(){const b=this.builder,w=this.def;const electrified=this.editor.electrified;
   for(const edge of this.network.edges.values()){
@@ -601,10 +1199,218 @@ class RailwayWorld {
 
 return {RailwayWorld};
 })();
+// ---- src/train-detail.js ----
+const __m_src_train_detail_js = (() => {
+const {PRIMITIVES,Geometry,MeshBuilder} = __m_src_geometry_js;
+const {hex,transform,mat4Mul,frameMatrix,pointTransform,add,sub,mul,norm,TAU} = __m_src_math_js;
+/** Detailed rolling-stock assemblies, baked by material and independently LOD'd.
+ * No imported model or texture: every wheel flange, coil, pipe and grille is geometry.
+ */
+
+
+const STEEL=[0,.26,.82,0],PAINT=[0,.40,.40,0],RUBBER=[0,.96,0,0],GLASS=[3,.12,.28,0];
+const silver=hex('#a8afaa'),dark=hex('#273330'),rubber=hex('#151d1c'),brass=hex('#b09a61');
+
+function wheelGeometry() {
+ const profile=[[-.56,.39],[-.52,.51],[-.34,.53],[-.25,.48],[.30,.48],[.48,.43],[.51,.23],[.57,.19]],segments=32;
+ const vertices=[],indices=[];
+ for(let j=0;j<profile.length;j++) {
+  const [y,r]=profile[j],a=profile[Math.max(0,j-1)],b=profile[Math.min(profile.length-1,j+1)],ny=-(b[1]-a[1]),nr=b[0]-a[0];
+  for(let i=0;i<=segments;i++){const t=i/segments*TAU,n=norm([Math.cos(t)*nr,ny,Math.sin(t)*nr]);vertices.push(Math.cos(t)*r,y,Math.sin(t)*r,...n,i/segments,j/(profile.length-1));}
+ }
+ for(let j=0;j<profile.length-1;j++)for(let i=0;i<segments;i++){const a=j*(segments+1)+i,b=a+segments+1;indices.push(a,b,a+1,a+1,b,b+1);}
+ return new Geometry(vertices,indices);
+}
+function springGeometry() {
+ const b=new MeshBuilder(),turns=5,steps=70,sides=6,r=.33,tube=.065;
+ const point=(i,j)=>{const t=i/steps,angle=t*TAU*turns,u=j/sides*TAU;return [Math.cos(angle)*(r+Math.cos(u)*tube),t-.5+Math.sin(u)*tube,Math.sin(angle)*(r+Math.cos(u)*tube)];};
+ for(let i=0;i<steps;i++)for(let j=0;j<sides;j++)b.quad(point(i,j),point(i,j+1),point(i+1,j+1),point(i+1,j));
+ return b.geometry();
+}
+function noseGeometry() {
+ const rings=18,segments=32,vertices=[],indices=[];
+ for(let j=0;j<=rings;j++) {
+  const t=j/rings,width=.5*(1-.9*t**1.7),height=.49*(1-.84*t**1.15),y=-.24*t,z=-.5+t*1.13;
+  for(let i=0;i<=segments;i++){const angle=i/segments*TAU,ca=Math.cos(angle),sa=Math.sin(angle),n=norm([ca,sa,.6*t]);vertices.push(ca*width,sa*height+y,z,...n,i/segments,t);}
+ }
+ for(let j=0;j<rings;j++)for(let i=0;i<segments;i++){const a=j*(segments+1)+i,b=a+segments+1;indices.push(a,a+1,b,b,a+1,b+1);}
+ return new Geometry(vertices,indices);
+}
+PRIMITIVES.wheel=wheelGeometry();PRIMITIVES.spring=springGeometry();PRIMITIVES.nose=noseGeometry();
+
+function assembler() {
+ const parts=[];
+ const part=(g,p,s,c=dark,pr=PAINT,rot=[0,0,0],role='detail',tier=1)=>parts.push({g,m:transform(p,s,...rot),c,pr,role,tier});
+ const box=(p,s,c=dark,pr=PAINT,role='detail',tier=1)=>part('box',p,s,c,pr,[0,0,0],role,tier);
+ const pipe=(a,b,width=.055,c=silver,role='detail',tier=1)=>parts.push({g:'cylinder',m:mat4Mul(frameMatrix(mul(add(a,b),.5),sub(b,a)),transform([0,0,0],[width,Math.hypot(...sub(b,a)),width],0,Math.PI/2,0)),c,pr:STEEL,role,tier});
+ return {parts,part,box,pipe};
+}
+
+function vehicleDetails(stock,index,last) {
+ const {parts,part,box,pipe}=assembler(),loco=index===0,L=loco?stock.locoLength:stock.carLength,color=hex(stock.color),stripe=hex(stock.stripe),freight=stock.kind==='diesel'&&!loco;
+ // Longitudinal solebars, battery boxes, air reservoirs, brake distributors,
+ // underfloor cable trays and diagonal body supports are visible from trackside.
+ for(const side of [-1,1]) {
+  box([side*1.27,1.14,0],[.18,.50,L-1.8],dark,STEEL);
+  for(let z=-L*.33;z<L*.34;z+=2.4){box([side*1.39,1.24,z],[.1,.26,.10],silver,STEEL,'detail',2);}
+  pipe([side*.80,.85,-L*.33],[side*.80,.85,L*.33],.065,dark);
+  box([side*.63,.73,-.8],[.92,.72,1.8],hex('#58615b'),PAINT);
+  for(const z of [-L*.42,L*.42]) {
+   for(let j=0;j<3;j++)box([side*1.66,1.1+j*.18,z],[.34,.06,.7],silver,STEEL);
+   pipe([side*1.57,1.5,z+.44],[side*1.57,2.55,z+.44],.045,silver,'detail',2);
+  }
+ }
+ for(const z of [-2.8,2.4])part('cylinder',[0,.76,z],[.66,1.45,.66],dark,STEEL,[0,0,Math.PI/2]);
+ pipe([0,.88,-L*.43],[0,.88,L*.43],.08,hex('#6a6c58'));
+ // End beams, coupler jaws, brake hoses and screw-coupling hardware.
+ for(const end of [-1,1]) {
+  const z=end*(L*.5+.28);box([0,1.16,z],[.42,.3,.55],dark,STEEL);
+  box([.19,1.16,z+end*.28],[.14,.36,.23],silver,STEEL);
+  for(const side of [-1,1]) {
+   for(let j=0;j<7;j++){const t=j/7,u=(j+1)/7;pipe([side*.48,.92-Math.sin(t*Math.PI)*.44,z+t*.34*end],[side*.48,.92-Math.sin(u*Math.PI)*.44,z+u*.34*end],.05,rubber,'detail',2);}
+   box([side*.7,1.38,z],[.12,.12,.07],end>0?hex('#b85d46'):hex('#b1a27e'),PAINT,'detail',2);
+  }
+ }
+ if(!freight) {
+  // Rubber window seals and body panel joints separate the glazing from paint.
+  const end=loco&&stock.kind==='highspeed'?L*.22:L*.5-2.6;
+  if(!(loco&&['diesel','steam'].includes(stock.kind)))for(const side of [-1,1]) {
+   for(let z=-L*.5+2.6;z<end;z+=2.24) {
+    for(const y of [3.12,4.24])box([side*1.615,y,z],[.026,.038,1.76],rubber,RUBBER,'seal',1);
+    for(const dz of [-.86,.86])box([side*1.615,3.68,z+dz],[.026,1.16,.038],rubber,RUBBER,'seal',1);
+   }
+   for(let z=-L*.3;z<L*.29;z+=3.8)box([side*1.603,2.00,z],[.015,.1,.18],silver,STEEL,'detail',2);
+   // Vented underfloor radiator cabinets, individual louvers at inspection LOD.
+   box([side*1.42,1.20,1.8],[.18,.64,2.7],dark,STEEL);
+   for(let z=.55;z<3;z+=.16)box([side*1.53,1.2,z],[.04,.5,.055],silver,STEEL,'detail',2);
+  }
+  if(!loco) {
+   for(const end of [-1,1]) for(let i=0;i<8;i++) {
+    const z=end*(L*.5+.03+i*.045);box([0,4.31,z],[2.45,.06,.045],rubber,RUBBER);for(const side of [-1,1])box([side*1.22,3.05,z],[.06,2.48,.045],rubber,RUBBER);
+   }
+   for(const z of [-L*.2,L*.2]){box([0,4.98,z],[1.6,.32,2.6],hex('#9aa29b'));for(let dz=-1;dz<=1;dz+=.25)box([0,5.15,z+dz],[1.25,.035,.08],dark,STEEL,'detail',2);}
+  }
+ }
+ if(loco) {
+  if(['electric','highspeed','metro'].includes(stock.kind)) {
+   for(let z=-L*.31;z<L*.28;z+=1.65) {
+    for(const side of [-1,1]){part('spring',[side*.74,5.20,z],[.21,.42,.21],hex('#77745d'),PAINT,[0,0,0],'roof',2);pipe([side*.74,5.43,z],[side*.74,5.43,Math.min(z+1.65,L*.28)],.055,hex('#a88756'),'roof');}
+   }
+   box([0,5.19,-L*.34],[1.5,.25,.66],dark,STEEL,'roof');
+   for(const side of [-1,1])part('cone',[side*.58,5.27,L*.26],[.24,.6,.24],silver,STEEL,[0,Math.PI/2,0],'roof');
+  }
+  if(stock.kind==='diesel') {
+   for(const z of [-7,-3]) {
+    part('cylinder',[0,5.04,z],[1.65,.07,1.65],rubber,STEEL);
+    for(let i=0;i<12;i++){const t=i*TAU/12;pipe([Math.cos(t)*.2,5.10,z+Math.sin(t)*.2],[Math.cos(t)*.78,5.10,z+Math.sin(t)*.78],.05,silver,'detail',2);}
+    for(let x=-.7;x<=.7;x+=.18)box([x,5.13,z],[.026,.025,1.4],dark,STEEL,'detail',2);
+   }
+   part('cylinder',[.35,5.12,-.4],[.33,.65,.33],dark,STEEL);
+   for(const side of [-1,1])for(let z=-9;z<1;z+=1.65) {
+    box([side*1.352,2.43,z],[.028,1.65,.018],dark,RUBBER,'detail',2);
+    box([side*1.40,2.98,z+.45],[.025,.12,.2],silver,STEEL,'detail',2);
+   }
+   for(const z of [-L*.48,L*.48])for(let i=0;i<8;i++)box([-1.3+i*.34,1.65,z],[.17,.36,.08],i%2?stripe:hex('#e0b65e'));
+  }
+  if(stock.kind==='steam') {
+   for(const side of [-1,1]) {
+    pipe([side*1.08,3.7,-2],[side*1.08,3.7,8.4],.1,brass);
+    pipe([side*.93,2.0,-1.2],[side*.93,2.0,6.8],.17,dark);
+    part('cylinder',[side*1.17,1.30,5.8],[.74,2.0,.74],dark,STEEL,[0,Math.PI/2,0]);
+    for(let z=-1.5;z<8.6;z+=.42)part('sphere',[side*1.17,3.46,z],[.075,.075,.075],silver,STEEL,[0,0,0],'detail',2);
+   }
+   for(const z of [-.4,1.1,3.8])part('cylinder',[0,4.51,z],[.26,.42,.26],brass,STEEL);
+   // Individual coal lumps, and cab firebox controls.
+   for(let i=0;i<45;i++)part('sphere',[(i%5-2)*.51,4.16+Math.sin(i*1.73)*.15,-11.4+Math.floor(i/5)*.5],[.6,.4,.7],rubber,RUBBER,[i,0,0],'detail',1);
+   box([0,2.66,-2.34],[1.30,1.65,.3],dark,STEEL,'cab',1);
+   part('sphere',[0,2.25,-2.52],[.58,.55,.12],hex('#d66b31'),[4,.8,0,.9],[0,0,0],'cab',1);
+  }
+  // Detailed cab desk: instrument bezels, switches, gauges, reverser lever,
+  // seat frames and backrests. Visible only at useful inspection distances.
+  const cabZ=stock.kind==='steam'?-4.4:L*.34;
+  for(const side of [-1,1]) {
+   box([side*.66,2.3,cabZ-.76],[.55,.16,.61],rubber,RUBBER,'cab');
+   box([side*.66,2.70,cabZ-1.05],[.56,.87,.12],hex('#59645b'),PAINT,'cab');
+   box([side*.66,1.86,cabZ-.8],[.10,.74,.12],silver,STEEL,'cab');
+   for(let i=0;i<6;i++)part('cylinder',[side*.52+(i%3-.5)*.11,3.04,cabZ+.5+Math.floor(i/3)*.12],[.052,.065,.052],hex(i%3?'#c6bb93':'#b36b4b'),PAINT,[0,0,0],'cab',2);
+   pipe([side*.90,2.94,cabZ+.35],[side*.90,3.2,cabZ+.5],.055,silver,'cab');
+   part('sphere',[side*.90,3.2,cabZ+.5],[.13,.13,.13],rubber,RUBBER,[0,0,0],'cab');
+  }
+  for(let i=0;i<3;i++) {
+   const x=-.4+i*.4;part('cylinder',[x,3.09,cabZ+.76],[.25,.05,.25],silver,STEEL,[0,0,0],'cab');
+   part('cylinder',[x,3.12,cabZ+.76],[.21,.016,.21],hex('#d9d7c5'),PAINT,[0,0,0],'cab');
+   box([x,3.135,cabZ+.73],[.009,.007,.09],dark,RUBBER,'cab',2);
+  }
+  if(stock.kind!=='steam')for(const side of [-1,1]) {
+   const z=L*.487;pipe([side*.75,3.22,z+.025],[side*.36,4.14,z+.025],.035,dark,'wiper',1);
+   box([side*.45,4.34,z],[.20,.06,.08],silver,STEEL,'detail',2);
+   for(const dx of [-.25,.25])box([side*1.01+dx,2.55,L*.503],[.025,.37,.04],dark,STEEL);
+  }
+ }
+ if(freight) {
+  if(index%4===0){for(const z of [-L*.27,L*.27])part('cylinder',[0,2.9,z],[2.86,.055,2.86],silver,STEEL,[0,Math.PI/2,0]);}
+  else {
+   for(const end of [-1,1]) {
+    const z=end*(L*.5-1.39);box([0,2.95,z],[.035,2.49,.04],dark,RUBBER);
+    for(const x of [-.94,-.44,.44,.94]){pipe([x,1.78,z+end*.05],[x,4.05,z+end*.05],.035,silver);box([x,2.7,z+end*.10],[.21,.04,.08],silver,STEEL,'detail',2);}
+    for(const x of [-1.27,1.27])for(const y of [1.72,4.19])box([x,y,z],[.17,.15,.12],silver,STEEL);
+   }
+  }
+  for(const side of [-1,1])for(const z of [-L*.38,L*.38]){box([side*1.47,1.65,z],[.23,.09,.27],hex('#bb9f60'));}
+ }
+ return parts;
+}
+
+function bogieDetails(heavy=false) {
+ const {parts,box,part,pipe}=assembler();
+ for(const side of [-1,1]) {
+  for(const z of [-1.03,1.03]) {
+   part('spring',[side*1.08,1.23,z],[.38,.51,.38],silver,STEEL,[0,0,0],'detail',1);
+   box([side*1.22,.82,z],[.26,.26,.28],hex('#63736e'),STEEL);
+   pipe([side*1.1,1.15,z-.25],[side*1.1,1.51,z+.23],.09,silver);
+   box([side*.98,.72,z+.42],[.2,.30,.16],dark,STEEL);
+   for(const dz of [-.10,.10])part('sphere',[side*1.37,.83,z+dz],[.045,.045,.045],silver,STEEL,[0,0,0],'detail',2);
+  }
+  part('cylinder',[side*.87,1.37,0],[.65,.29,.65],rubber,RUBBER);
+  pipe([side*.92,.73,-1.0],[side*.92,.73,1.0],.045,silver);
+  box([side*1.22,.92,0],[.14,.19,2.9],hex('#596860'),STEEL);
+ }
+ for(const z of [-1.03,1.03])for(const side of [-1,1])part('cylinder',[side*.70,.73,z],[.66,.055,.66],silver,STEEL,[0,0,Math.PI/2]);
+ box([0,1.22,0],[1.55,.30,1.2],dark,STEEL);
+ if(heavy)part('cylinder',[0,.80,0],[.52,1.6,.52],hex('#606b61'),STEEL,[0,0,Math.PI/2]);
+ return parts;
+}
+
+/** Bake immutable local transforms once, preserving material, animation role and LOD.
+ * The runtime transforms assemblies, not thousands of decorative individual parts.
+ */
+function bakeAssemblies(parts,prefix) {
+ const groups=new Map();
+ for(const p of parts) {
+  const key=`${p.role}|${p.tier||0}|${p.c.join(',')}|${p.pr.join(',')}`;
+  let group=groups.get(key);if(!group){group={role:p.role,tier:p.tier||0,c:p.c,pr:p.pr,v:[],i:[]};groups.set(key,group);}
+  const geometry=PRIMITIVES[p.g];if(!geometry)throw new Error(`Unknown detail primitive ${p.g}`);
+  const base=group.v.length/8,m=p.m;
+  for(let i=0;i<geometry.vertices.length;i+=8) {
+   const v=geometry.vertices,position=pointTransform(m,[v[i],v[i+1],v[i+2]]),n=[0,0,0];
+   for(let k=0;k<3;k++){const d=m[k*4]**2+m[k*4+1]**2+m[k*4+2]**2||1;for(let j=0;j<3;j++)n[j]+=m[k*4+j]*v[i+3+k]/d;}
+   group.v.push(...position,...norm(n),v[i+6],v[i+7]);
+  }
+  for(const i of geometry.indices)group.i.push(base+i);
+ }
+ const out=[];let i=0;
+ for(const g of groups.values()) {const name=`assembly:${prefix}:${i++}`;PRIMITIVES[name]=new Geometry(g.v,g.i);out.push({g:name,m:transform([0,0,0]),c:g.c,pr:g.pr,role:g.role,tier:g.tier});}
+ return out;
+}
+
+return {vehicleDetails,bogieDetails,bakeAssemblies};
+})();
 // ---- src/rolling-stock.js ----
 const __m_src_rolling_stock_js = (() => {
+const {vehicleDetails,bogieDetails,bakeAssemblies} = __m_src_train_detail_js;
 const {hex,transform,frameMatrix,mat4Mul,add,sub,mul,norm,pointTransform,TAU,clamp} = __m_src_math_js;
 const {Batch,PRIMITIVES,MeshBuilder} = __m_src_geometry_js;
+
 
 
 const METAL=hex('#808b89'),DARK=hex('#283330'),BLACK=hex('#171f20'),GLASS=hex('#263e46'),CREAM=hex('#f4e7c5');
@@ -613,7 +1419,7 @@ const LABEL_FONT={R:['1110','1001','1110','1010','1001'],A:['0110','1001','1111'
 function makeLabel(){const b=new MeshBuilder();let x=0;for(const ch of 'RAILBOUND'){const glyph=LABEL_FONT[ch];for(let y=0;y<5;y++)for(let c=0;c<glyph[y].length;c++)if(glyph[y][c]==='1'){const z=(x+c)*.105,v=(4-y)*.105;b.quad([0,v,z],[0,v+.096,z],[0,v+.096,z+.096],[0,v,z+.096],[1,0,0]);}x+=glyph[0].length+1;}return b.geometry();}
 PRIMITIVES.label=makeLabel();
 class RollingStockRenderer {
- constructor(){this.batches=new Map();this.cache=new Map();this.smoke=[];this.particleClock=0;this.smokeBatch=new Batch(PRIMITIVES.sphere,{dynamic:true});this.smokeBatch.transparent=true;this.smokeBatch.castShadow=false;this.time=0;}
+ constructor(){this.batches=new Map();this.cache=new Map();this.smoke=[];this.particleClock=0;this.smokeBatch=new Batch(PRIMITIVES.sphere,{dynamic:true});this.smokeBatch.transparent=true;this.smokeBatch.castShadow=false;this.time=0;this.bogieCache=new Map();this.cameraPosition=[0,0,0];this.detailCounts={};}
  batch(name){if(!this.batches.has(name))this.batches.set(name,new Batch(PRIMITIVES[name],{dynamic:true,castShadow:true}));return this.batches.get(name);}
  emit(name,matrix,color,props=PAINT){this.batch(name).add(matrix,color,props);}
  model(stock,index,last){const key=`${stock.id}:${index===0?'engine':index%4}:${last}`;if(this.cache.has(key))return this.cache.get(key);const parts=[];const isLoco=index===0,L=isLoco?stock.locoLength:stock.carLength,col=hex(stock.color),stripe=hex(stock.stripe);
@@ -633,19 +1439,26 @@ class RollingStockRenderer {
   if(!isLoco&&stock.kind!=='diesel'){box([0,3.05,L*.498],[2.43,2.48,.14],DARK);box([0,3.04,-L*.498],[2.43,2.48,.14],DARK);box([0,2.92,L*.505],[1.17,2.16,.1],hex('#78837e'));}
   for(const z of [-L*.5-.2,L*.5+.2]){box([0,1.1,z],[.28,.23,.63],METAL,STEEL);for(const side of [-1,1]){part('cylinder',[side*.92,1.19,z],[.32,.35,.32],DARK,RUBBER,[0,Math.PI/2,0]);}}
   if(last){for(const x of [-1.05,1.05])box([x,2.36,-L*.503],[.18,.22,.05],hex('#d53e2c'),[4,.4,0,2]);}
-  this.cache.set(key,parts);return parts;
+  parts.push(...vehicleDetails(stock,index,last));
+  const baked=bakeAssemblies(parts,key);this.detailCounts[key]={parts:parts.length,assemblies:baked.length,triangles:baked.reduce((sum,p)=>sum+PRIMITIVES[p.g].indices.length/3,0)};
+  this.cache.set(key,baked);return baked;
  }
- emitBogie(base,train,isLoco,phase){this.emit('box',mat4Mul(base,transform([0,1.00,0],[2.3,.48,3.2])),DARK,RUBBER);for(const z of [-1.03,1.03]){this.emit('cylinder',mat4Mul(base,transform([0,.74,z],[.20,2.2,.20],0,0,Math.PI/2)),METAL,STEEL);for(const side of [-1,1]){const wm=mat4Mul(base,mat4Mul(transform([side*1.015,.73,z],[1,1,1],0,phase),transform([0,0,0],[1.10,.16,1.10],0,0,Math.PI/2)));this.emit('cylinder',wm,BLACK,STEEL);this.emit('cylinder',mat4Mul(base,transform([side*1.12,.73,z],[.69,.07,.69],0,0,Math.PI/2)),METAL,STEEL);this.emit('box',mat4Mul(base,transform([side*1.18,.98,z],[.28,.42,.37])),DARK,RUBBER);}}
+ emitBogie(base,train,isLoco,phase){
+  const distance=Math.hypot(base[12]-this.cameraPosition[0],base[13]-this.cameraPosition[1],base[14]-this.cameraPosition[2]);
+  if(distance<450){const key=isLoco&&train.stock.kind==='diesel'?'heavy':'standard';if(!this.bogieCache.has(key))this.bogieCache.set(key,bakeAssemblies(bogieDetails(key==='heavy'),'bogie-'+key));
+   for(const p of this.bogieCache.get(key)){if(p.tier===2&&distance>100)continue;this.emit(p.g,base,p.c,p.pr);}}
+this.emit('box',mat4Mul(base,transform([0,1.00,0],[2.3,.48,3.2])),DARK,RUBBER);for(const z of [-1.03,1.03]){this.emit('cylinder',mat4Mul(base,transform([0,.74,z],[.20,2.2,.20],0,0,Math.PI/2)),METAL,STEEL);for(const side of [-1,1]){const wm=mat4Mul(base,mat4Mul(transform([side*1.015,.73,z],[1,1,1],0,phase),transform([0,0,0],[1.10,.16,1.10],0,0,Math.PI/2)));this.emit('wheel',wm,hex('#737e78'),STEEL);this.emit('cylinder',mat4Mul(base,transform([side*1.12,.73,z],[.69,.07,.69],0,0,Math.PI/2)),METAL,STEEL);this.emit('box',mat4Mul(base,transform([side*1.18,.98,z],[.28,.42,.37])),DARK,RUBBER);}}
   for(const side of [-1,1])this.emit('box',mat4Mul(base,transform([side*1.19,1.13,0],[.20,.36,3.17])),hex('#53615a'),STEEL);
  }
- drawTrain(train,cameraMode){for(let i=0;i<=train.cars;i++){const off=train.carOffset(i),L=i===0?train.stock.locoLength:train.stock.carLength,a=train.cursor.pose(off+L*.33),z=train.cursor.pose(off-L*.33),p=train.cursor.pose(off);const base=frameMatrix(p.p,sub(a.p,z.p));const parts=this.model(train.stock,i,i===train.cars);for(const part of parts){if(train.id==='player'&&i===0&&cameraMode==='cab'&&(part.role==='shell'||part.role==='glass'))continue;let local=part.m,props=part.pr;if(part.role==='pantograph'&&!train.controls.pantograph)local=mat4Mul(mat4Mul(transform([0,4.84,0],[1,.12,1]),transform([0,-4.84,0])),local);if(part.role.startsWith('door'))local=mat4Mul(transform([0,0,train.doorAmount*.9]),local);if(part.role==='headlight'&&!train.controls.headlights)props=[0,.25,.3,0];this.emit(part.g,mat4Mul(base,local),part.c,props);}
+ drawTrain(train,cameraMode){for(let i=0;i<=train.cars;i++){const off=train.carOffset(i),L=i===0?train.stock.locoLength:train.stock.carLength,a=train.cursor.pose(off+L*.33),z=train.cursor.pose(off-L*.33),p=train.cursor.pose(off);const base=frameMatrix(p.p,sub(a.p,z.p));const distance=Math.hypot(p.p[0]-this.cameraPosition[0],p.p[1]-this.cameraPosition[1],p.p[2]-this.cameraPosition[2]);
+   const parts=this.model(train.stock,i,i===train.cars);for(const part of parts){if((part.tier===1&&distance>450)||(part.tier===2&&distance>100))continue;if(train.id==='player'&&i===0&&cameraMode==='cab'&&(part.role==='shell'||part.role==='glass'||part.role==='seal'||part.role==='wiper'))continue;let local=part.m,props=part.pr;if(part.role==='pantograph'&&!train.controls.pantograph)local=mat4Mul(mat4Mul(transform([0,4.84,0],[1,.12,1]),transform([0,-4.84,0])),local);if(part.role.startsWith('door'))local=mat4Mul(transform([0,0,train.doorAmount*.9]),local);if(part.role==='headlight'&&!train.controls.headlights)props=[0,.25,.3,0];this.emit(part.g,mat4Mul(base,local),part.c,props);}
    const phase=-train.cursor.odometer/.55;
    if(train.stock.kind==='steam'&&i===0){for(const zz of [-2.4,0,2.4])for(const side of [-1,1]){const wp=[side*1.12,1.03,zz];this.emit('cylinder',mat4Mul(base,transform(wp,[1.68,.19,1.68],0,0,Math.PI/2)),BLACK,STEEL);for(let spoke=0;spoke<8;spoke++){const angle=phase+spoke*Math.PI/4;const m=mat4Mul(transform(wp,[1,1,1],0,angle),transform([0,0,0],[.13,1.48,.045]));this.emit('box',mat4Mul(base,m),hex('#9fa598'),STEEL);}}for(const side of [-1,1]){const y=1.03+Math.sin(phase)*.45,z=Math.cos(phase)*.45;this.emit('box',mat4Mul(base,transform([side*1.26,y,z],[.11,.14,5.25])),METAL,STEEL);}for(const zz of [-9,7.4])this.emitBogie(mat4Mul(base,transform([0,0,zz],[.9,1,.7])),train,true,phase);}
    else{this.emitBogie(frameMatrix(a.p,a.f),train,i===0,phase);this.emitBogie(frameMatrix(z.p,z.f),train,i===0,phase);}
    if(train.id==='player'&&i===0&&cameraMode==='cab'&&train.controls.wipers){const t=Math.sin(this.time*3.1)*.7;for(const side of [-1,1])this.emit('box',mat4Mul(base,transform([side*.63,3.43,L*.47],[.04,1.1,.035],0,0,t)),BLACK);}
   }
  }
- update(trains,world,camera,dt,time,mode){this.time=time;for(const b of this.batches.values())b.reset();for(const t of trains){const p=t.cursor.pose().p;if(t.id==='player'||Math.hypot(p[0]-camera.position[0],p[2]-camera.position[2])<2500)this.drawTrain(t,mode);}for(const s of world.signals){if(Math.hypot(s.pos[0]-camera.position[0],s.pos[2]-camera.position[2])>1600)continue;const aspect=world.traffic?.aspect(s.edge,s.s)||'green';const base=frameMatrix(s.pos,s.f);for(const [i,color]of ['red','yellow','green'].entries()){const on=aspect===color;this.emit('sphere',mat4Mul(base,transform([0,.46-i*.44,.19],[.24,.24,.13])),hex(on?{red:'#ff493b',yellow:'#ffd37a',green:'#8ce9a0'}[color]:'#172421'),[4,.3,0,on?3:0]);}}
+ update(trains,world,camera,dt,time,mode){this.time=time;this.cameraPosition=camera.position;for(const b of this.batches.values())b.reset();for(const t of trains){const p=t.cursor.pose().p;if(t.id==='player'||Math.hypot(p[0]-camera.position[0],p[2]-camera.position[2])<2500)this.drawTrain(t,mode);}for(const s of world.signals){if(Math.hypot(s.pos[0]-camera.position[0],s.pos[2]-camera.position[2])>1600)continue;const aspect=world.traffic?.aspect(s.edge,s.s)||'green';const base=frameMatrix(s.pos,s.f);for(const [i,color]of ['red','yellow','green'].entries()){const on=aspect===color;this.emit('sphere',mat4Mul(base,transform([0,.46-i*.44,.19],[.24,.24,.13])),hex(on?{red:'#ff493b',yellow:'#ffd37a',green:'#8ce9a0'}[color]:'#172421'),[4,.3,0,on?3:0]);}}
   for(const b of this.batches.values()){b.center=camera.target;b.radius=1e7;b.flush();}
   this.updateParticles(trains,world,camera,dt,time);
   return [...this.batches.values(),this.smokeBatch];
@@ -695,10 +1508,70 @@ class RailAudio {
 
 return {RailAudio};
 })();
+// ---- src/generation-ui.js ----
+const __m_src_generation_ui_js = (() => {
+const {WORLDS} = __m_src_data_js;
+const {TerrainField,REGION_PROFILES,generationOptions,surveyRoute} = __m_src_generation_js;
+const {clamp,hex,lerp} = __m_src_math_js;
+/** Expedition controls and numerical terrain previews (not stock images). */
+
+
+
+
+function thumbnail(canvas,def,seed,options) {
+ const field=new TerrainField(def,seed,options),ctx=canvas.getContext('2d'),width=canvas.width=176,height=canvas.height=106;
+ const image=ctx.createImageData(width,height),range=Math.max(def.rx,def.rz)*2.05;
+ const grass=hex(def.ground),rock=hex(def.rock),water=hex(def.waterColor);
+ for(let y=0;y<height;y++)for(let x=0;x<width;x++) {
+  const wx=(x/width-.5)*range*2,wz=(y/height-.5)*range*2,h=field.rawHeight(wx,wz),dx=field.rawHeight(wx+26,wz)-h,dz=field.rawHeight(wx,wz+26)-h;
+  const slope=clamp(Math.hypot(dx,dz)/45,0,1),shade=clamp(.94+(dx-dz)*.008,.48,1.3),snow=clamp((h-def.snowLine)/100,0,1),i=(y*width+x)*4;
+  for(let k=0;k<3;k++)image.data[i+k]=255*(h<def.water?water[k]*.7:lerp(lerp(grass[k],rock[k],slope),.91,snow)*shade);
+  image.data[i+3]=255;
+ }
+ ctx.putImageData(image,0,0);const controls=surveyRoute(def,field);
+ const draw=(color,widthValue)=>{ctx.strokeStyle=color;ctx.lineWidth=widthValue;ctx.beginPath();controls.forEach((p,i)=>{const x=(p[0]/(range*2)+.5)*width,y=(p[2]/(range*2)+.5)*height;i?ctx.lineTo(x,y):ctx.moveTo(x,y);});ctx.closePath();ctx.stroke();};
+ draw('#172524',3);draw('#f0d5a5',1.3);
+}
+
+function expeditionPanel(ui) {
+ const app=ui.app,world=app.world,field=world.terrain,options=generationOptions(world.editor.generation);
+ const $=id=>document.getElementById(id);
+ $('panel-content').innerHTML=`
+ <section class="expedition-head"><div><span class="overline">EXPEDITION / GENERATOR 03</span><p>Choose a geography. Survey a new railway. Change the seed to resurvey the terrain, forests and railway.</p></div><span class="expedition-seed">SEED ${Math.trunc(world.seed)}</span></section>
+ <section class="generation-controls" aria-label="Procedural world settings">
+  <label class="field"><span>World seed</span><div class="seed-entry"><input id="generation-seed" type="number" min="1" max="2147483647" step="1" value="${Math.trunc(world.seed)}"><button class="secondary" id="generation-random" aria-label="Choose a new random seed">Shuffle</button></div></label>
+  ${ui.field('Mountain relief','generation-relief',55,165,5,Math.round(options.relief*100),'%')}
+  ${ui.field('Ecological density','generation-vegetation',25,170,5,Math.round(options.vegetation*100),'%')}
+  ${ui.field('Erosion strength','generation-erosion',0,100,5,Math.round(options.erosion*100),'%')}
+ </section>
+ <div class="expedition-stats"><span>${(world.network.totalLength/1000).toFixed(1)} km current route</span><span>${world.features.trees.toLocaleString()} trees</span><span>${field?Math.round(field.stats.max-field.stats.min)+' m relief':'Legacy landscape'}</span><span>Seeded · editable · saved locally</span></div>
+ <div class="button-row expedition-viewpoints">${world.viewpoints.map((v,i)=>`<button class="secondary" data-viewpoint="${i}">Explore · ${v.name} ↗</button>`).join('')}</div>
+ <div class="world-grid expedition-grid">${WORLDS.map(def=>{const profile=REGION_PROFILES[def.theme];return `<button class="world-card ${world.def.id===def.id?'selected':''}" data-world="${def.id}" aria-label="Generate ${def.name}"><canvas class="expedition-preview" data-preview="${def.id}"></canvas><div class="card-text"><span class="overline">${profile.name}</span><h3>${def.name}</h3><p>${profile.geology}</p><small>${profile.species}</small></div><span class="expedition-action">SURVEY & ENTER ↗</span></button>`;}).join('')}</div>
+ <div class="panel-notice">Select a region to generate a fresh journey using these settings. Export your current project first to keep edits and train positions. Preview maps show the pre-erosion survey; the final terrain is eroded before rail grading. Legacy saves retain their original railway.</div>`;
+ const read=()=>({seed:clamp(Math.trunc(Number($('generation-seed').value))||1,1,2147483647),generationVersion:3,generation:{relief:Number($('generation-relief').value)/100,vegetation:Number($('generation-vegetation').value)/100,erosion:Number($('generation-erosion').value)/100}});
+ for(const button of document.querySelectorAll('[data-viewpoint]'))button.onclick=()=>{
+  const view=world.viewpoints[Number(button.dataset.viewpoint)];app.camera.position=[...view.position];app.camera.target=[...view.target];app.camera.setMode('free');ui.closePanel();ui.toast(view.name+' · drag to look · WASD and Q/E to fly · C to return to the train.');
+ };
+ let timer;
+ const previews=()=>{if(ui.activePanel!=='worlds')return;const value=read();for(const def of WORLDS){const canvas=document.querySelector(`[data-preview="${def.id}"]`);if(canvas)thumbnail(canvas,def,value.seed,value.generation);}};
+ const schedule=()=>{clearTimeout(timer);timer=setTimeout(previews,160);};
+ for(const key of ['relief','vegetation','erosion'])ui.bindRange('generation-'+key,schedule,v=>v+'%');
+ $('generation-seed').onchange=schedule;
+ $('generation-random').onclick=()=>{const value=new Uint32Array(1);crypto.getRandomValues(value);$('generation-seed').value=1+value[0]%2147483646;schedule();};
+ for(const button of document.querySelectorAll('[data-world]'))button.onclick=()=>ui.guard(async()=>{
+  const settings=read();clearTimeout(timer);ui.closePanel();await app.loadWorld(button.dataset.world,settings);ui.toast(`${app.world.def.name} · seed ${settings.seed} · ${(app.world.network.totalLength/1000).toFixed(1)} km surveyed.`);
+ });
+ previews();
+}
+
+return {expeditionPanel};
+})();
 // ---- src/persistence.js ----
 const __m_src_persistence_js = (() => {
+const {generationOptions} = __m_src_generation_js;
 const {WORLDS,STOCK,WEATHER,SCENARIOS} = __m_src_data_js;
 const {clamp} = __m_src_math_js;
+
 
 
 const SAVE_KEY='railbound-adventures-simulation-v2';
@@ -706,7 +1579,7 @@ function storageGet(key){try{return localStorage.getItem(key);}catch{return null
 function storageSet(key,value){try{localStorage.setItem(key,value);return true;}catch{return false;}}
 function finite(n,a,b,fallback=0){return Number.isFinite(n)?clamp(n,a,b):fallback;}
 function array(v,max){if(v==null)return [];if(!Array.isArray(v)||v.length>max)throw new Error('Project contains too many items or an invalid list.');return v;}
-function validateProject(value){if(!value||typeof value!=='object'||value.format!=='railbound-adventures'||value.version!==2)throw new Error('Not a supported Railbound Adventures v2 project.');const world=WORLDS.find(w=>w.id===value.world);if(!world)throw new Error('Unknown world.');if(!value.player||!STOCK.some(s=>s.id===value.player.stock))throw new Error('Invalid player train.');const editor=value.editor||{};const clean={seed:finite(editor.seed,1,2147483647,world.seed),electrified:editor.electrified!==false,objects:array(editor.objects,1500).map(o=>({type:['tree','building','rock'].includes(o.type)?o.type:'tree',x:finite(o.x,-12000,12000),z:finite(o.z,-12000,12000),size:finite(o.size,3,60,18),rotation:finite(o.rotation,-Math.PI*2,Math.PI*2)})),heightEdits:array(editor.heightEdits,250).map(o=>({x:finite(o.x,-12000,12000),z:finite(o.z,-12000,12000),radius:finite(o.radius,10,600,90),delta:finite(o.delta,-200,200,0)})),stations:array(editor.stations,50).map(o=>({edge:['approach','main','branch','return'].includes(o.edge)?o.edge:'approach',s:finite(o.s,0,100000),name:String(o.name||'New station').slice(0,64)})),customTrack:null};
+function validateProject(value){if(!value||typeof value!=='object'||value.format!=='railbound-adventures'||value.version!==2)throw new Error('Not a supported Railbound Adventures v2 project.');const world=WORLDS.find(w=>w.id===value.world);if(!world)throw new Error('Unknown world.');if(!value.player||!STOCK.some(s=>s.id===value.player.stock))throw new Error('Invalid player train.');const editor=value.editor||{};const clean={generationVersion:editor.generationVersion===3?3:2,generation:generationOptions(editor.generation),seed:finite(editor.seed,1,2147483647,world.seed),electrified:editor.electrified!==false,objects:array(editor.objects,1500).map(o=>({type:['tree','building','rock'].includes(o.type)?o.type:'tree',x:finite(o.x,-12000,12000),z:finite(o.z,-12000,12000),size:finite(o.size,3,60,18),rotation:finite(o.rotation,-Math.PI*2,Math.PI*2)})),heightEdits:array(editor.heightEdits,250).map(o=>({x:finite(o.x,-12000,12000),z:finite(o.z,-12000,12000),radius:finite(o.radius,10,600,90),delta:finite(o.delta,-200,200,0)})),stations:array(editor.stations,50).map(o=>({edge:['approach','main','branch','return'].includes(o.edge)?o.edge:'approach',s:finite(o.s,0,100000),name:String(o.name||'New station').slice(0,64)})),customTrack:null};
  if(editor.customTrack!=null){clean.customTrack=array(editor.customTrack,150).map(o=>({x:finite(o.x,-6000,6000),y:finite(o.y,0,900,world.railY),z:finite(o.z,-6000,6000)}));const routeLength=clean.customTrack.reduce((sum,p,i)=>{const q=clean.customTrack[(i+1)%clean.customTrack.length];return sum+Math.hypot(p.x-q.x,p.y-q.y,p.z-q.z);},0);if(routeLength>75000)throw new Error('Custom routes are limited to 75 km of control-point length.');if(clean.customTrack.length<4)throw new Error('Custom track requires at least four control points.');for(let i=0;i<clean.customTrack.length;i++){const a=clean.customTrack[i],b=clean.customTrack[(i+1)%clean.customTrack.length];if(Math.hypot(a.x-b.x,a.z-b.z)<25)throw new Error('Adjacent track nodes must be at least 25 metres apart.');}}
  const env=value.env||{};const settings=value.settings||{};const result={...value,world:world.id,editor:clean,ai:array(value.ai,5),env:{hour:finite(env.hour,0,23.999,world.hour),weather:Object.hasOwn(WEATHER,env.weather)?env.weather:'clear',timeRate:finite(env.timeRate,0,240,4),exposure:finite(env.exposure,.5,1.8,1),electrified:clean.electrified},settings:{quality:['low','medium','high','ultra'].includes(settings.quality)?settings.quality:'high',resolution:finite(settings.resolution,.5,1,1),shadows:settings.shadows!==false,adaptive:settings.adaptive!==false,safety:settings.safety!==false,units:settings.units==='mph'?'mph':'km/h',volume:finite(settings.volume,0,1,.36),timeScale:finite(settings.timeScale,.25,4,1),gamepad:settings.gamepad!==false},simTime:finite(value.simTime,0,1e10,0),paused:!!value.paused,dispatch:{autopilot:!!value.dispatch?.autopilot,holds:array(value.dispatch?.holds,500).filter(s=>typeof s==='string'&&/^(approach|main|branch|return):[0-9]{1,5}$/.test(s))},cameraState:typeof value.cameraState==='object'&&value.cameraState?value.cameraState:{},scenario:SCENARIOS.some(s=>s.id===value.scenario)?value.scenario:'free'};return result;}
 function encodeProject(app){return {format:'railbound-adventures',version:2,savedAt:new Date().toISOString(),world:app.world.def.id,editor:structuredClone(app.world.editor),env:{...app.env},settings:{...app.settings},scenario:app.mission.mode,mission:{score:app.mission.score,stops:app.mission.stops,boarded:app.mission.boarded,lastId:app.mission.lastId,complete:app.mission.complete,targetId:app.mission.target?.id||null,dwell:app.mission.dwell,penaltyClock:app.mission.penaltyClock,message:app.mission.message,stopLog:app.mission.stopLog},player:app.player.snapshot(),ai:app.trains.filter(t=>t!==app.player).map(t=>t.snapshot()),switchBranch:app.world.network.switchBranch,camera:app.camera.mode,cameraState:{distance:app.camera.distance,azimuth:app.camera.azimuth,elevation:app.camera.elevation,cabYaw:app.camera.cabYaw,cabPitch:app.camera.cabPitch,fov:app.camera.fov},simTime:app.simTime||0,paused:!!app.paused,dispatch:{holds:[...(app.world.traffic?.holds||[])],autopilot:!!app.autopilot}};}
@@ -715,10 +1588,12 @@ return {SAVE_KEY,storageGet,storageSet,validateProject,encodeProject};
 })();
 // ---- src/ui.js ----
 const __m_src_ui_js = (() => {
+const {expeditionPanel} = __m_src_generation_ui_js;
 const {WORLDS,STOCK,WEATHER,SCENARIOS} = __m_src_data_js;
 const {clamp,hex,lerp,downloadFile} = __m_src_math_js;
 const {CAMERA_MODES} = __m_src_camera_js;
 const {storageGet,SAVE_KEY} = __m_src_persistence_js;
+
 
 
 
@@ -762,7 +1637,7 @@ class UI {
  openPanel(name){this.activePanel=name;this.dialog.dataset.panel=name;this.app.panelPause=true;const titles={worlds:['THE RAILWAY IS YOURS','Find your next horizon'],fleet:['YOUR ROLLING STOCK','Choose your train'],map:['THE ENTIRE RAILWAY','Route map'],environment:['A WORLD IN YOUR HANDS','Weather & time'],dispatch:['RAILWAY OPERATIONS','Dispatcher'],editor:['SHAPE THE JOURNEY','World editor'],settings:['MAKE IT YOURS','Simulation & saves'],systems:['ENGINEERING DESK','Train systems'],missions:['A PURPOSE FOR THE JOURNEY','Services & scenarios'],help:['WELCOME ABOARD','Driving guide']};const [over,title]=titles[name]||titles.settings;$('panel-overline').textContent=over;$('panel-title').textContent=title;this.renderPanel(name);if(!this.dialog.open)this.dialog.showModal();}
  closePanel(){this.dialog.close();this.activePanel=null;this.app.panelPause=false;}
  renderPanel(name){const methods={worlds:'worldsPanel',fleet:'fleetPanel',map:'mapPanel',environment:'environmentPanel',dispatch:'dispatchPanel',editor:'editorPanel',settings:'settingsPanel',systems:'systemsPanel',missions:'missionsPanel',help:'helpPanel'};this[methods[name]||'settingsPanel']();}
- worldsPanel(){const a=this.app;$('panel-content').innerHTML=`<p class="panel-intro">Eight original, procedurally generated railways. Different landscapes, different rhythms. Every world is drivable and editable.</p><div class="world-grid">${WORLDS.map(w=>`<button class="world-card ${a.world.def.id===w.id?'selected':''}" data-world="${w.id}"><div class="world-art" style="--sky:${w.sky};--mount:${w.rock};--hill:${w.ground};--water:${w.waterColor}"><i class="art-water"></i><i class="art-track"></i><i class="art-train"></i></div>${a.world.def.id===w.id?'<span class="check">EXPLORING</span>':''}<div class="card-text"><span class="overline">${w.region}</span><h3>${w.name}</h3><p>${w.tag}</p></div></button>`).join('')}</div><div class="panel-notice">These are fictional, geographically inspired worlds, not surveyed reproductions of real routes. Switching worlds starts a fresh run; export your project to keep the current railway.</div>`;document.querySelectorAll('[data-world]').forEach(b=>b.onclick=()=>this.guard(async()=>{this.closePanel();await a.loadWorld(b.dataset.world);this.toast(`Welcome to ${a.world.def.name}.`);}));}
+ worldsPanel(){expeditionPanel(this);}
  fleetArt(s){const color=s.color,stripe=s.stripe,steam=s.kind==='steam';return `<svg viewBox="0 0 230 62" aria-hidden="true"><path d="M8 52h213" stroke="#a8ba9a" opacity=".4"/>${steam?`<rect x="39" y="17" width="107" height="25" rx="12" fill="${color}"/><rect x="136" y="10" width="32" height="36" fill="${color}"/><path d="M130 10h44"/><rect x="45" y="5" width="8" height="17" fill="#263b31"/><rect x="178" y="27" width="42" height="21" fill="${color}"/><path d="M44 40h171" stroke="${stripe}"/>`:`<path d="M18 43V21q0-8 9-8h153l29 17v13z" fill="${color}" stroke="#91a18a"/><path d="M18 35h190v6H18z" fill="${stripe}" stroke="none"/><path d="M28 19h119v11H28z" fill="#354e4b" stroke="none"/><path d="M156 18h20l18 12h-38z" fill="#354e4b" stroke="none"/><path d="M28 19v11m17-11v11m17-11v11m17-11v11m17-11v11m17-11v11m17-11v11" stroke="${color}" stroke-width="3"/>${['electric','highspeed','metro'].includes(s.kind)?'<path d="m79 11 17-7-14-3h19" stroke="#9cae91"/>':''}`}<g fill="#1b2a23" stroke="#92a18b">${[42,58,151,169,194,209].slice(0,steam?6:4).map(x=>`<circle cx="${x}" cy="45" r="5.5"/>`).join('')}</g></svg>`;}
  fleetPanel(){const a=this.app;$('panel-content').innerHTML=`<p class="panel-intro">Six original locomotives and trainsets, each with its own power, weight, traction and handling. Stop the train before changing rolling stock.</p><div class="fleet-grid">${STOCK.map(s=>`<div class="fleet-card ${a.player.stock.id===s.id?'selected':''}"><div class="fleet-art">${this.fleetArt(s)}</div><h3>${s.name}</h3><span class="family">${s.family}</span><div class="spec-grid"><div><span>POWER</span><b>${(s.power/1e6).toFixed(1)} MW</b></div><div><span>TOP SPEED</span><b>${s.maxSpeed} km/h</b></div><div><span>LOCOMOTIVE</span><b>${s.mass/1000} t</b></div><div><span>TRACTIVE EFFORT</span><b>${s.tractive/1000} kN</b></div></div><button class="secondary ${a.player.stock.id===s.id?'selected':''}" data-stock="${s.id}">${a.player.stock.id===s.id?'Currently driving':'Take the controls'} ${icon('arrow','icon small')}</button></div>`).join('')}</div><div class="panel-notice">Consist length and load affect acceleration, brake propagation and stopping distance. Configure wagons and advanced controls in Train systems.</div>`;document.querySelectorAll('[data-stock]').forEach(b=>b.onclick=()=>this.guard(()=>{a.player.setStock(STOCK.find(s=>s.id===b.dataset.stock));a.camera.initial=true;this.closePanel();this.toast(`${a.player.stock.name} ready. ${a.player.cars+1} vehicles coupled.`);}));}
  field(label,id,min,max,step,value,suffix=''){return `<label class="field"><span>${label}<b id="${id}-display">${value}${suffix}</b></span><input id="${id}" type="range" min="${min}" max="${max}" step="${step}" value="${value}"></label>`;}
@@ -780,13 +1655,14 @@ class UI {
  }
  editorCheckpoint(){this.editorUndo.push(structuredClone(this.draft));if(this.editorUndo.length>30)this.editorUndo.shift();this.editorRedo=[];}
  bindMap(editor){const canvas=$('large-map');if(!canvas)return;canvas.onclick=e=>this.guard(()=>{const r=canvas.getBoundingClientRect(),point=this.mapToWorld(e.clientX-r.left,e.clientY-r.top,r.width,r.height);if(!editor){const near=this.app.world.network.nearest(point.x,point.z);if(near&&near.distance<80)this.toast(`${near.edge==='branch'?'Scenic branch':'Main line'} · ${Math.round(near.s)} m · ${Math.round(this.app.world.network.edges.get(near.edge).speedLimit(near.s))} km/h`);return;}const t=this.editorTool;if(t==='inspect')return;if(t==='teleport'){const near=this.app.world.network.nearest(point.x,point.z);if(near)this.app.teleport(near.edge,near.s);return;}if(t==='track'){if(this.newTrack.length>=150)throw new Error('Maximum 150 control points.');this.newTrack.push({...point,y:this.nodeElevation||this.app.world.def.railY});this.editorPanel();return;}this.editorCheckpoint();if(['tree','building','rock'].includes(t)){if(this.draft.objects.length>=1500)throw new Error('Maximum 1,500 placed objects.');this.draft.objects.push({type:t,...point,size:18,rotation:0});}else if(['raise','lower'].includes(t)){if(this.draft.heightEdits.length>=250)throw new Error('Maximum 250 terrain brushes.');this.draft.heightEdits.push({...point,radius:this.brushRadius||90,delta:t==='raise'?25:-25});}else if(t==='station'){if(this.draft.stations.length>=50)throw new Error('Maximum 50 extra stations.');const p=this.app.world.network.nearest(point.x,point.z);if(p)this.draft.stations.push({edge:p.edge,s:p.s,name:`New station ${this.draft.stations.length+1}`});}else if(t==='erase'){let best=-1,dist=120;this.draft.objects.forEach((o,i)=>{const d=Math.hypot(point.x-o.x,point.z-o.z);if(d<dist){best=i;dist=d;}});if(best>=0)this.draft.objects.splice(best,1);else this.toast('No placed object within 120 m.');}this.editorPanel();});}
- mapToWorld(x,y,width,height){const range=Math.max(this.app.world.def.rx,this.app.world.def.rz)*1.43,scale=Math.min(width,height)/(range*2);return {x:(x-width/2)/scale,z:(y-height/2)/scale};}
- createMapCache(){const world=this.app.world,w=world.def,size=192,range=Math.max(w.rx,w.rz)*1.43;const canvas=document.createElement('canvas');canvas.width=canvas.height=size;const ctx=canvas.getContext('2d'),img=ctx.createImageData(size,size);for(let z=0;z<size;z++)for(let x=0;x<size;x++){const wx=(x/size-.5)*range*2,wz=(z/size-.5)*range*2,h=world.baseHeight(wx,wz),i=(z*size+x)*4;const water=h<w.water,contour=Math.abs(h%55)<3,shade=water?0:clamp((h-w.water)/w.mountains,0,1)*.22;img.data[i]=water?23:Math.floor(40+shade*100-(contour?6:0));img.data[i+1]=water?57:Math.floor(65+shade*100-(contour?6:0));img.data[i+2]=water?53:Math.floor(43+shade*80-(contour?4:0));img.data[i+3]=255;}ctx.putImageData(img,0,0);this.mapCache=canvas;this.mapWorld=world;}
- drawMap(canvas,large){if(!canvas||!this.app.world)return;const a=this.app;if(!this.mapCache||this.mapWorld!==a.world)this.createMapCache();const rect=canvas.getBoundingClientRect(),dpr=large?Math.min(devicePixelRatio||1,2):2,width=Math.max(rect.width,10),height=Math.max(rect.height,10);if(canvas.width!==Math.round(width*dpr)||canvas.height!==Math.round(height*dpr)){canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);}const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,width,height);const range=Math.max(a.world.def.rx,a.world.def.rz)*1.43,scale=Math.min(width,height)/(2*range);const x0=width/2,z0=height/2,size=range*2*scale;ctx.fillStyle='#182b20';ctx.fillRect(0,0,width,height);ctx.globalAlpha=large?.95:.55;ctx.drawImage(this.mapCache,x0-size/2,z0-size/2,size,size);ctx.globalAlpha=1;const point=p=>[x0+p[0]*scale,z0+p[2]*scale];ctx.strokeStyle='#c4d0b329';ctx.lineWidth=.5;for(let i=-3;i<=3;i++){ctx.beginPath();ctx.moveTo(x0+i*size/6,z0-size/2);ctx.lineTo(x0+i*size/6,z0+size/2);ctx.stroke();ctx.beginPath();ctx.moveTo(x0-size/2,z0+i*size/6);ctx.lineTo(x0+size/2,z0+i*size/6);ctx.stroke();}
+ mapToWorld(x,y,width,height){const range=this.mapRange(),scale=Math.min(width,height)/(range*2);return {x:(x-width/2)/scale,z:(y-height/2)/scale};}
+ mapRange(){const world=this.app.world,b=world.network.bounds;return world.terrain?Math.max(Math.abs(b.minX),Math.abs(b.maxX),Math.abs(b.minZ),Math.abs(b.maxZ))*1.04:Math.max(world.def.rx,world.def.rz)*1.43;}
+ createMapCache(){const world=this.app.world,w=world.def,size=192,range=this.mapRange();const canvas=document.createElement('canvas');canvas.width=canvas.height=size;const ctx=canvas.getContext('2d'),img=ctx.createImageData(size,size);for(let z=0;z<size;z++)for(let x=0;x<size;x++){const wx=(x/size-.5)*range*2,wz=(z/size-.5)*range*2,h=world.baseHeight(wx,wz),i=(z*size+x)*4;const water=h<w.water,contour=Math.abs(h%55)<3,shade=water?0:clamp((h-w.water)/w.mountains,0,1)*.22;img.data[i]=water?23:Math.floor(40+shade*100-(contour?6:0));img.data[i+1]=water?57:Math.floor(65+shade*100-(contour?6:0));img.data[i+2]=water?53:Math.floor(43+shade*80-(contour?4:0));img.data[i+3]=255;}ctx.putImageData(img,0,0);this.mapCache=canvas;this.mapWorld=world;}
+ drawMap(canvas,large){if(!canvas||!this.app.world)return;const a=this.app;if(!this.mapCache||this.mapWorld!==a.world)this.createMapCache();const rect=canvas.getBoundingClientRect(),dpr=large?Math.min(devicePixelRatio||1,2):2,width=Math.max(rect.width,10),height=Math.max(rect.height,10);if(canvas.width!==Math.round(width*dpr)||canvas.height!==Math.round(height*dpr)){canvas.width=Math.round(width*dpr);canvas.height=Math.round(height*dpr);}const ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,width,height);const range=this.mapRange(),scale=Math.min(width,height)/(2*range);const x0=width/2,z0=height/2,size=range*2*scale;ctx.fillStyle='#182b20';ctx.fillRect(0,0,width,height);ctx.globalAlpha=large?.95:.55;ctx.drawImage(this.mapCache,x0-size/2,z0-size/2,size,size);ctx.globalAlpha=1;const point=p=>[x0+p[0]*scale,z0+p[2]*scale];ctx.strokeStyle='#c4d0b329';ctx.lineWidth=.5;for(let i=-3;i<=3;i++){ctx.beginPath();ctx.moveTo(x0+i*size/6,z0-size/2);ctx.lineTo(x0+i*size/6,z0+size/2);ctx.stroke();ctx.beginPath();ctx.moveTo(x0-size/2,z0+i*size/6);ctx.lineTo(x0+size/2,z0+i*size/6);ctx.stroke();}
   for(const edge of a.world.network.edges.values()){ctx.strokeStyle=edge.id==='branch'?'#d0b688':'#c5d4b7';ctx.lineWidth=large?2:1.2;ctx.setLineDash(edge.id==='branch'?[3,3]:[]);ctx.beginPath();for(let i=0;i<edge.points.length;i+=10){const p=point(edge.points[i]);if(i===0)ctx.moveTo(...p);else ctx.lineTo(...p);}ctx.lineTo(...point(edge.points.at(-1)));ctx.stroke();}ctx.setLineDash([]);
   for(const st of a.world.stations){const p=point(a.world.network.edges.get(st.edge).at(st.s).p);ctx.fillStyle='#1c3026';ctx.strokeStyle='#e2e4c4';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(...p,large?4:2.5,0,Math.PI*2);ctx.fill();ctx.stroke();if(large){ctx.fillStyle='#e0e7d2';ctx.font='9px system-ui';ctx.fillText(st.name,p[0]+7,p[1]-5);}}
   if(this.activePanel==='editor'&&large&&this.draft){for(const o of this.draft.objects){ctx.fillStyle=o.type==='tree'?'#b7cc7d':'#d1b588';ctx.fillRect(x0+o.x*scale-2,z0+o.z*scale-2,4,4);}for(const e of this.draft.heightEdits){ctx.fillStyle=e.delta>0?'#b6c27928':'#78b0c22c';ctx.beginPath();ctx.arc(x0+e.x*scale,z0+e.z*scale,e.radius*scale,0,Math.PI*2);ctx.fill();}const nodes=this.newTrack.length?this.newTrack:this.draft.customTrack;if(nodes?.length){ctx.strokeStyle='#eba06c';ctx.lineWidth=2;ctx.beginPath();nodes.forEach((p,i)=>{const x=x0+p.x*scale,y=z0+p.z*scale;if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);});if(!this.newTrack.length)ctx.closePath();ctx.stroke();for(const p of nodes){ctx.fillStyle='#f0c58f';ctx.beginPath();ctx.arc(x0+p.x*scale,z0+p.z*scale,3,0,Math.PI*2);ctx.fill();}}}
-  for(const t of a.trains){const pose=t.cursor.pose(),p=point(pose.p);ctx.save();ctx.translate(...p);ctx.rotate(-Math.atan2(pose.f[0],pose.f[2]));ctx.fillStyle=t===a.player?'#efbd75':'#88ced0';ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=large?8:4;ctx.beginPath();const n=large?6:4;ctx.moveTo(0,n);ctx.lineTo(-n*.7,-n);ctx.lineTo(0,-n*.5);ctx.lineTo(n*.7,-n);ctx.closePath();ctx.fill();ctx.restore();}if(large){ctx.fillStyle='#b4c2a4';ctx.font='10px system-ui';ctx.fillText('N ↑',13,20);ctx.fillText(`${(a.world.network.totalLength/1000).toFixed(1)} km main circuit`,13,height-13);}
+  for(const t of a.trains){const pose=t.cursor.pose(),p=point(pose.p);ctx.save();ctx.translate(...p);ctx.rotate(-Math.atan2(pose.f[0],pose.f[2]));ctx.fillStyle=t===a.player?'#efbd75':'#88ced0';ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=large?8:4;ctx.beginPath();const n=large?6:4;ctx.moveTo(0,n);ctx.lineTo(-n*.7,-n);ctx.lineTo(0,-n*.5);ctx.lineTo(n*.7,-n);ctx.closePath();ctx.fill();ctx.restore();}if(large){ctx.fillStyle='#b4c2a4';ctx.font='10px system-ui';ctx.fillText('N ↑',13,20);ctx.fillText(`${(a.world.network.totalLength/1000).toFixed(1)} km surveyed main line`,13,height-13);}
  }
  helpPanel(){const rows=[['Power up / down','W / S'],['Brake apply / release','D / A'],['Emergency brake','Space'],['Cycle camera','C'],['Cameras 1–6','1–6'],['Horn (hold)','H'],['Open / close doors','O'],['Headlights','L'],['Raise / lower pantograph','P'],['Wipers','K'],['Apply sand (hold)','X'],['Reverser (stopped)','R'],['Route map','M'],['Pause / resume','Esc'],['Export project','Ctrl / ⌘ + S'],['Free camera move / rise','WASD / E / Q']];$('panel-content').innerHTML=`<div class="panel-two-column"><section class="panel-section"><h3>Your first departure</h3><div class="guide-step"><b>1</b><span><strong>Begin your journey</strong> closes doors, releases brakes, selects forward and applies moderate power. Air brakes take a few seconds to release.</span></div><div class="guide-step"><b>2</b><span>Adjust power and brake with the sliders. For manual driving, keep the master on and raise the pantograph on electric trains.</span></div><div class="guide-step"><b>3</b><span>Plan your stop early. Reduce power, apply the train brake and watch the next-station distance. Brakes apply progressively along the consist.</span></div><div class="guide-step"><b>4</b><span>For passenger services, stop within <strong>18 m</strong> of the marker and open doors for <strong>20 seconds</strong>. Close them before departing.</span></div><div class="guide-step"><b>5</b><span>Drag the world to orbit or look from the cab. Pinch or scroll to zoom. Use the tools on the right to change worlds, trains, traffic and scenery.</span></div><div class="panel-notice">Gamepad: right trigger for power, left trigger for brake; right stick to look; A to change camera; B for emergency; X for doors; Y for horn. In free camera, WASD flies, Q/E change height and Shift accelerates.</div></section><section><div class="key-grid" style="grid-template-columns:1fr">${rows.map(([label,key])=>`<div class="key-row"><span>${label}</span><kbd>${key}</kbd></div>`).join('')}</div></section></div><div class="panel-notice">This is an entertainment simulation, not certified driver training. Train dynamics, signaling, routes and rolling stock are simplified and fictional. Mobile performance varies with device, browser and thermal limits.</div>`;}
 }
@@ -846,7 +1722,7 @@ class RailboundApp {
   this.loadingWorld=true;this.accumulator=0;this.audio.stop();this.ui.loading('Surveying the railway',.01);
   let next;
   try{
-   next=new RailwayWorld(def,editor||{});
+   next=await RailwayWorld.create(def,editor||{});
    const stock=restored?STOCK.find(s=>s.id===restored.player.stock):(this.player?.stock||STOCK[0]);
    const player=new Train(next.network,stock,'player');
    const traffic=new Traffic(next.network);next.traffic=traffic;
