@@ -293,21 +293,23 @@ class JourneyDirector {
  survey(train,world,env,limit,mission){
   const direction=Math.sign(train.speed)||train.controls.reverser||1,v=Math.abs(train.speed),wet=(WEATHER[env.weather]||WEATHER.clear).wet;
   const grade=train.grade*direction,stop=serviceStoppingDistance(v,grade,train.cars,wet),range=clamp(stop*1.5+600,1200,4000);
-  this.profile=[];let target=limit/3.6,constraint={distance:range,kind:'clear',message:'Line clear — enjoy the journey'};
+  this.profile=[];let routeGrade=grade,target=limit/3.6,constraint={distance:range,kind:'clear',message:'Line clear — enjoy the journey'};
   for(let d=0;d<=range;d+=60){
    const p=train.cursor.pose(direction*d),edge=world.network.edges.get(p.edge),speed=Math.min(train.stock.maxSpeed,edge.speedLimit(p.s));
-   this.profile.push({distance:d,height:p.p[1],limit:speed,grade:p.grade});
-   const permitted=speedEnvelope(speed/3.6,Math.max(0,d-v*(2+train.cars*.12)),grade,wet);
+   const travelGrade=p.grade*direction;routeGrade=Math.min(routeGrade,travelGrade);
+   this.profile.push({distance:d,height:p.p[1],limit:speed,grade:travelGrade});
+   const permitted=speedEnvelope(speed/3.6,Math.max(0,d-v*(2+train.cars*.12)),routeGrade,wet);
    if(permitted<target){target=permitted;constraint={distance:d,kind:'limit',message:`Curve / limit ahead · ${Math.round(speed)} km/h`};}
   }
+  const gradeTo=distance=>Math.min(grade,...this.profile.filter(p=>p.distance<=distance).map(p=>p.grade));
   const danger=world.traffic?.dangerDistance(train,Math.min(4000,range))??Infinity;
   if(Number.isFinite(danger)){
-   const safe=speedEnvelope(0,Math.max(0,danger-30-v*2),grade,wet);
+   const safe=speedEnvelope(0,Math.max(0,danger-30-v*2),gradeTo(danger),wet);
    if(safe<target){target=safe;constraint={distance:danger,kind:'signal',message:'Occupied block — prepare to stop'};}
   }
   if(mission?.target&&!mission.complete&&direction>0){
    const d=train.cursor.distanceTo(mission.target.edge,mission.target.s);
-   const safe=speedEnvelope(0,Math.max(0,d-10-v*(2+train.cars*.12)),grade,wet);
+   const safe=speedEnvelope(0,Math.max(0,d-10-v*(2+train.cars*.12)),gradeTo(d),wet);
    if(d<range&&safe<target){target=safe;constraint={distance:d,kind:'station',message:`Approaching ${mission.target.name}`};}
   }
   this.guidance={...constraint,target:target*3.6,stoppingDistance:stop,brake:v>target+.6,comfort:Math.max(0,100-Math.abs(this.jerk)*22-Math.max(0,Math.abs(train.acceleration)-.65)*30)};
@@ -470,14 +472,26 @@ function installCinematicUI(app){
  $('photo-fov').oninput=e=>app.camera.fov=Number(e.target.value);$('photo-exposure').oninput=e=>app.env.exposure=Number(e.target.value);
  $('photo-look').onchange=e=>{app.settings.cinematic.look=e.target.value;app.applySettings();};
 }
+/** Capture owned camera state without aliasing mutable vectors. */
+function snapshotPhotoCamera(camera){
+ const state={};
+ for(const key of ['mode','fov','distance','azimuth','elevation','cabYaw','cabPitch','freeYaw','freePitch','photoOrbit'])state[key]=camera[key];
+ for(const key of ['position','target','trackAnchor'])state[key]=camera[key]?camera[key].slice():null;
+ return state;
+}
+function restorePhotoCamera(camera,state){
+ camera.setMode(state.mode);
+ for(const [key,value] of Object.entries(state))camera[key]=Array.isArray(value)?value.slice():value;
+ camera.initial=true;
+}
 function togglePhotoMode(app,on=!app.photoMode){
  if(!app.ready||on===!!app.photoMode)return;
  if(on){
   if(app.ui.dialog.open)app.ui.closePanel();
-  app.photoState={paused:app.paused,mode:app.camera.mode,fov:app.camera.fov};app.paused=true;app.keys.clear();app.camera.setMode('free');app.photoMode=true;
+  app.photoState={paused:app.paused,camera:snapshotPhotoCamera(app.camera)};app.paused=true;app.keys.clear();app.camera.setMode('free');app.photoMode=true;
   $('photo-fov').value=app.camera.fov;$('photo-exposure').value=app.env.exposure;$('photo-look').value=app.settings.cinematic.look;
  }else{
-  app.photoMode=false;app.paused=app.photoState.paused;app.camera.setMode(app.photoState.mode);app.camera.fov=app.photoState.fov;app.photoState=null;app.keys.clear();
+  app.photoMode=false;app.paused=app.photoState.paused;restorePhotoCamera(app.camera,app.photoState.camera);app.photoState=null;app.keys.clear();
  }
  document.body.classList.toggle('photo-mode',app.photoMode);$('photo-studio').classList.toggle('hidden',!app.photoMode);
  app.accumulator=0;app.ui.update();
@@ -517,7 +531,7 @@ function updateCinematicUI(app){
  $('driver-coach').classList.toggle('braking-advice',!!g.brake);
 }
 
-return {installCinematicUI,togglePhotoMode,cinematicPanel,journeyPanel,drawProfile,updateCinematicUI};
+return {installCinematicUI,snapshotPhotoCamera,restorePhotoCamera,togglePhotoMode,cinematicPanel,journeyPanel,drawProfile,updateCinematicUI};
 })();
 // ---- src/shaders.js ----
 const __m_src_shaders_js = (() => {
@@ -1313,13 +1327,14 @@ async function buildEcosystem(world,onProgress=()=>{}) {
 }
 
 /** Long engineering structures respond to actual route-to-terrain clearances. */
-function buildCivilEngineering(world) {
+function buildCivilEngineering(world,includeBridges=true) {
  const b=world.builder,theme=world.def.theme;
  for(const edge of world.network.edges.values()) {
   let inBridge=false;
   for(let s=18;s<edge.length-30;s+=24) {
    const p=edge.at(s),height=world.baseHeight(p.p[0],p.p[2]),gap=p.p[1]-height;
    if(gap>14) {
+    if(!includeBridges)continue; // New viaduct builder owns bridge geometry.
     if(!inBridge)world.features.landmarks++;inBridge=true;
     // Trussed deck and diagonals follow the railway, including the alternative.
     if(['canyon','coast','metro'].includes(theme)) for(const side of [-1,1]) {
@@ -1592,7 +1607,7 @@ const __m_src_world_js = (() => {
 const {foundation,buildingFoundation,buildViaducts} = __m_src_cinematic_models_js;
 const {buildShoreline} = __m_src_world_life_js;
 const {TerrainField, GENERATOR_VERSION} = __m_src_generation_js;
-const {buildExpeditionTerrain, buildEcosystem, buildLandmarks} = __m_src_world_detail_js;
+const {buildExpeditionTerrain, buildEcosystem, buildLandmarks, buildCivilEngineering} = __m_src_world_detail_js;
 const {clamp,lerp,smooth,fbm,noise2,rng,hex,add,sub,mul,norm,cross,frameMatrix,transform,mat4Mul,pointTransform,TAU} = __m_src_math_js;
 const {Geometry,MeshBuilder,SceneBuilder,PRIMITIVES} = __m_src_geometry_js;
 const {RailNetwork} = __m_src_tracks_js;
@@ -1635,7 +1650,7 @@ class RailwayWorld {
   for(const st of this.stations){const p=this.network.edges.get(st.edge).at(st.s-60),dx=x-p.p[0],dz=z-p.p[2];const along=dx*p.f[0]+dz*p.f[2],across=dx*p.right[0]+dz*p.right[2];if(across>1&&across<100&&Math.abs(along)<150){const t=smooth(100,150,Math.abs(along))*1+smooth(55,100,across);h=lerp(p.p[1]-.4,h,clamp(t,0,1));}}
   return h;
  }
- async build(onProgress=()=>{}){onProgress('Shaping terrain',.12);await new Promise(r=>setTimeout(r,0));if(this.terrain)await buildExpeditionTerrain(this,onProgress);else this.buildTerrain();onProgress('Laying rail and bridges',.36);await new Promise(r=>setTimeout(r,0));this.buildTracks();onProgress('Building stations and villages',.56);await new Promise(r=>setTimeout(r,0));this.buildStations();this.buildTownscapes();onProgress('Planting forests',.73);await new Promise(r=>setTimeout(r,0));if(this.terrain){await buildEcosystem(this,onProgress);buildLandmarks(this);}else this.buildVegetation();this.buildDecorations();this.buildWater();buildShoreline(this);this.batches=this.builder.finish();onProgress('Preparing the railway',.92);return this;}
+ async build(onProgress=()=>{}){onProgress('Shaping terrain',.12);await new Promise(r=>setTimeout(r,0));if(this.terrain)await buildExpeditionTerrain(this,onProgress);else this.buildTerrain();onProgress('Laying rail and bridges',.36);await new Promise(r=>setTimeout(r,0));this.buildTracks();if(this.terrain)buildCivilEngineering(this,false);onProgress('Building stations and villages',.56);await new Promise(r=>setTimeout(r,0));this.buildStations();this.buildTownscapes();onProgress('Planting forests',.73);await new Promise(r=>setTimeout(r,0));if(this.terrain){await buildEcosystem(this,onProgress);buildLandmarks(this);}else this.buildVegetation();this.buildDecorations();this.buildWater();buildShoreline(this);this.batches=this.builder.finish();onProgress('Preparing the railway',.92);return this;}
  buildTerrain(){const b=this.builder,w=this.def,span=Math.max(w.rx,w.rz)*2.8,chunk=span/8,N=24;for(let iz=-8;iz<8;iz++)for(let ix=-8;ix<8;ix++){const verts=[],inds=[],x0=ix*chunk,z0=iz*chunk,step=chunk/N;for(let z=0;z<=N;z++)for(let x=0;x<=N;x++){const wx=x0+x*step,wz=z0+z*step,h=this.height(wx,wz);const e=5,n=norm([this.height(wx-e,wz)-this.height(wx+e,wz),2*e,this.height(wx,wz-e)-this.height(wx,wz+e)]);verts.push(wx,h,wz,...n,wx*.01,wz*.01);}for(let z=0;z<N;z++)for(let x=0;x<N;x++){const i=z*(N+1)+x;inds.push(i,i+N+1,i+1,i+1,i+N+1,i+N+2);}const center=[x0+chunk/2,this.baseHeight(x0+chunk/2,z0+chunk/2),z0+chunk/2];const batch=b.mesh(new Geometry(verts,inds),center,chunk*1.8,[1,.95,0,0]);batch.maxDistance=15000;}}
  buildWater(){const w=this.def,b=this.builder;const mesh=new MeshBuilder();const s=this.terrain?this.terrain.half:Math.max(w.rx,w.rz)*2.5;mesh.quad([-s,w.water,s],[s,w.water,s],[s,w.water,-s],[-s,w.water,-s],[0,1,0]);const batch=b.mesh(mesh.geometry(),[0,w.water,0],s*1.5,[2,.12,.1,0],hex(w.waterColor));batch.castShadow=false;batch.maxDistance=14000;}
  railCross(p,offset,y){return [p.p[0]+p.right[0]*offset,p.p[1]+y,p.p[2]+p.right[2]*offset];}

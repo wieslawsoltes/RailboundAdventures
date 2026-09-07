@@ -37,21 +37,23 @@ export class JourneyDirector {
  survey(train,world,env,limit,mission){
   const direction=Math.sign(train.speed)||train.controls.reverser||1,v=Math.abs(train.speed),wet=(WEATHER[env.weather]||WEATHER.clear).wet;
   const grade=train.grade*direction,stop=serviceStoppingDistance(v,grade,train.cars,wet),range=clamp(stop*1.5+600,1200,4000);
-  this.profile=[];let target=limit/3.6,constraint={distance:range,kind:'clear',message:'Line clear — enjoy the journey'};
+  this.profile=[];let routeGrade=grade,target=limit/3.6,constraint={distance:range,kind:'clear',message:'Line clear — enjoy the journey'};
   for(let d=0;d<=range;d+=60){
    const p=train.cursor.pose(direction*d),edge=world.network.edges.get(p.edge),speed=Math.min(train.stock.maxSpeed,edge.speedLimit(p.s));
-   this.profile.push({distance:d,height:p.p[1],limit:speed,grade:p.grade});
-   const permitted=speedEnvelope(speed/3.6,Math.max(0,d-v*(2+train.cars*.12)),grade,wet);
+   const travelGrade=p.grade*direction;routeGrade=Math.min(routeGrade,travelGrade);
+   this.profile.push({distance:d,height:p.p[1],limit:speed,grade:travelGrade});
+   const permitted=speedEnvelope(speed/3.6,Math.max(0,d-v*(2+train.cars*.12)),routeGrade,wet);
    if(permitted<target){target=permitted;constraint={distance:d,kind:'limit',message:`Curve / limit ahead · ${Math.round(speed)} km/h`};}
   }
+  const gradeTo=distance=>Math.min(grade,...this.profile.filter(p=>p.distance<=distance).map(p=>p.grade));
   const danger=world.traffic?.dangerDistance(train,Math.min(4000,range))??Infinity;
   if(Number.isFinite(danger)){
-   const safe=speedEnvelope(0,Math.max(0,danger-30-v*2),grade,wet);
+   const safe=speedEnvelope(0,Math.max(0,danger-30-v*2),gradeTo(danger),wet);
    if(safe<target){target=safe;constraint={distance:danger,kind:'signal',message:'Occupied block — prepare to stop'};}
   }
   if(mission?.target&&!mission.complete&&direction>0){
    const d=train.cursor.distanceTo(mission.target.edge,mission.target.s);
-   const safe=speedEnvelope(0,Math.max(0,d-10-v*(2+train.cars*.12)),grade,wet);
+   const safe=speedEnvelope(0,Math.max(0,d-10-v*(2+train.cars*.12)),gradeTo(d),wet);
    if(d<range&&safe<target){target=safe;constraint={distance:d,kind:'station',message:`Approaching ${mission.target.name}`};}
   }
   this.guidance={...constraint,target:target*3.6,stoppingDistance:stop,brake:v>target+.6,comfort:Math.max(0,100-Math.abs(this.jerk)*22-Math.max(0,Math.abs(train.acceleration)-.65)*30)};

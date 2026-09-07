@@ -12,14 +12,26 @@ export function installCinematicUI(app){
  $('photo-fov').oninput=e=>app.camera.fov=Number(e.target.value);$('photo-exposure').oninput=e=>app.env.exposure=Number(e.target.value);
  $('photo-look').onchange=e=>{app.settings.cinematic.look=e.target.value;app.applySettings();};
 }
+/** Capture owned camera state without aliasing mutable vectors. */
+export function snapshotPhotoCamera(camera){
+ const state={};
+ for(const key of ['mode','fov','distance','azimuth','elevation','cabYaw','cabPitch','freeYaw','freePitch','photoOrbit'])state[key]=camera[key];
+ for(const key of ['position','target','trackAnchor'])state[key]=camera[key]?camera[key].slice():null;
+ return state;
+}
+export function restorePhotoCamera(camera,state){
+ camera.setMode(state.mode);
+ for(const [key,value] of Object.entries(state))camera[key]=Array.isArray(value)?value.slice():value;
+ camera.initial=true;
+}
 export function togglePhotoMode(app,on=!app.photoMode){
  if(!app.ready||on===!!app.photoMode)return;
  if(on){
   if(app.ui.dialog.open)app.ui.closePanel();
-  app.photoState={paused:app.paused,mode:app.camera.mode,fov:app.camera.fov};app.paused=true;app.keys.clear();app.camera.setMode('free');app.photoMode=true;
+  app.photoState={paused:app.paused,camera:snapshotPhotoCamera(app.camera)};app.paused=true;app.keys.clear();app.camera.setMode('free');app.photoMode=true;
   $('photo-fov').value=app.camera.fov;$('photo-exposure').value=app.env.exposure;$('photo-look').value=app.settings.cinematic.look;
  }else{
-  app.photoMode=false;app.paused=app.photoState.paused;app.camera.setMode(app.photoState.mode);app.camera.fov=app.photoState.fov;app.photoState=null;app.keys.clear();
+  app.photoMode=false;app.paused=app.photoState.paused;restorePhotoCamera(app.camera,app.photoState.camera);app.photoState=null;app.keys.clear();
  }
  document.body.classList.toggle('photo-mode',app.photoMode);$('photo-studio').classList.toggle('hidden',!app.photoMode);
  app.accumulator=0;app.ui.update();

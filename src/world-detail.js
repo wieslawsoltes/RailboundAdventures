@@ -156,13 +156,14 @@ export async function buildEcosystem(world,onProgress=()=>{}) {
 }
 
 /** Long engineering structures respond to actual route-to-terrain clearances. */
-export function buildCivilEngineering(world) {
+export function buildCivilEngineering(world,includeBridges=true) {
  const b=world.builder,theme=world.def.theme;
  for(const edge of world.network.edges.values()) {
   let inBridge=false;
   for(let s=18;s<edge.length-30;s+=24) {
    const p=edge.at(s),height=world.baseHeight(p.p[0],p.p[2]),gap=p.p[1]-height;
    if(gap>14) {
+    if(!includeBridges)continue; // New viaduct builder owns bridge geometry.
     if(!inBridge)world.features.landmarks++;inBridge=true;
     // Trussed deck and diagonals follow the railway, including the alternative.
     if(['canyon','coast','metro'].includes(theme)) for(const side of [-1,1]) {

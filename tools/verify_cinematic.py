@@ -136,10 +136,10 @@ with sync_playwright() as p:
         check('terrain triangles clear train loading gauge',page.evaluate('''()=>{const a=railbound;for(let d=-60;d<=120;d+=5){const p=a.player.cursor.pose(d);for(const side of [-1.6,0,1.6]){const x=p.p[0]+side*p.right[0],z=p.p[2]+side*p.right[2];if(a.world.surfaceHeight(x,z)>p.p[1]+.35)return false;}}return true;}'''))
         page.evaluate("railbound.camera.setMode('cab')")
         render(page,'velocity-cab')
-        page.evaluate("railbound.camera.setMode('chase');railbound.paused=false")
+        page.evaluate("railbound.camera.setMode('chase');railbound.camera.distance=137;railbound.paused=false")
         # Native keyboard handlers are used, including control isolation in photo mode.
         controls=page.evaluate('JSON.stringify(railbound.player.controls)')
-        previous=page.evaluate('({mode:railbound.camera.mode,fov:railbound.camera.fov,paused:railbound.paused})')
+        previous=page.evaluate('({mode:railbound.camera.mode,fov:railbound.camera.fov,distance:railbound.camera.distance,paused:railbound.paused})')
         page.keyboard.press('F2')
         check('photo mode pauses and frees camera',page.evaluate('railbound.photoMode&&railbound.paused&&railbound.camera.mode==="free"') and page.locator('#photo-studio').is_visible())
         page.keyboard.press('o');page.keyboard.press('Space');page.keyboard.press('3')
@@ -155,7 +155,7 @@ with sync_playwright() as p:
         page.evaluate('railbound.renderEnabled=false')
         check('PNG capture has real pixels',(OUT/'photo-capture.png').stat().st_size>10000)
         page.keyboard.press('Escape')
-        check('photo exit restores camera and pause state',page.evaluate('({mode:railbound.camera.mode,fov:railbound.camera.fov,paused:railbound.paused})')==previous)
+        check('photo exit restores camera and pause state',page.evaluate('({mode:railbound.camera.mode,fov:railbound.camera.fov,distance:railbound.camera.distance,paused:railbound.paused})')==previous)
         page.evaluate('railbound.paused=true')
         # Audio is started by an actual user action and has a bounded persistent graph.
         page.locator('#audio-toggle').click();page.locator('#audio-toggle').click()
