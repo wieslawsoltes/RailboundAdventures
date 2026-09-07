@@ -1,6 +1,6 @@
 /* Railbound Adventures: same-origin, versioned offline app-shell cache. */
 'use strict';
-const CACHE = 'railbound-adventures-3.0.0-expedition';
+const CACHE = 'railbound-adventures-3.1.0-cinematic';
 const BASE = new URL('./', self.location.href);
 const FILES = [
   './', 'index.html', 'styles/app.css', 'manifest.webmanifest',
@@ -9,6 +9,7 @@ const FILES = [
   'src/geometry.js', 'src/shaders.js', 'src/renderer.js', 'src/world.js',
   'src/rolling-stock.js', 'src/camera.js', 'src/audio.js',
   'src/persistence.js', 'src/ui.js', 'src/main.js',
+  'src/postprocess.js', 'src/cinematic-models.js', 'src/world-life.js', 'src/journey.js', 'src/cinematic-ui.js',
   'src/generation.js', 'src/generation-worker.js', 'src/generation-ui.js',
   'src/world-detail.js', 'src/train-detail.js'
 ].map(path => new URL(path, BASE).href);

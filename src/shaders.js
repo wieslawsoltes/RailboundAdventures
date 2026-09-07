@@ -8,7 +8,7 @@ struct Frame {
 fn hash(p:vec2f)->f32 { return fract(sin(dot(p,vec2f(127.1,311.7)))*43758.5453); }
 fn noise(p:vec2f)->f32 {let i=floor(p); let a=fract(p);let f=a*a*(vec2f(3.)-2.*a);return mix(mix(hash(i),hash(i+vec2f(1,0)),f.x),mix(hash(i+vec2f(0,1)),hash(i+vec2f(1,1)),f.x),f.y);}
 fn fbm(p0:vec2f)->f32 {var p=p0;var n=0.;var a=.5;for(var i=0;i<4;i++){n+=noise(p)*a;p=p*2.03+vec2f(13.4,7.1);a*=.5;}return n;}
-fn aces(c:vec3f)->vec3f {let x=max(c*u.sunExposure.w,vec3f(0));return pow(clamp((x*(2.51*x+vec3f(.03)))/(x*(2.43*x+vec3f(.59))+vec3f(.14)),vec3f(0),vec3f(1)),vec3f(1./2.2));}
+fn aces(c:vec3f)->vec3f {return clamp(c,vec3f(0),vec3f(128));}
 fn atmosphere(rd:vec3f,clouds:bool)->vec3f {
  let day=u.sunDay.w;let h=clamp(rd.y*.8+.18,0.,1.);let horizon=mix(vec3f(.018,.027,.055),pow(u.fog.rgb,vec3f(2.2))*.95,day);
  let zenith=mix(vec3f(.002,.005,.018),vec3f(.12,.30,.50),day);var sky=mix(horizon,zenith,pow(h,.6));
@@ -16,6 +16,13 @@ fn atmosphere(rd:vec3f,clouds:bool)->vec3f {
  sky+=vec3f(.52,.21,.065)*pow(sun,9.)*(1.-smoothstep(.18,.55,u.sunDay.y))*day;
  if(clouds && rd.y>0.){let uv=rd.xz/max(.07,rd.y)*1.6+vec2f(u.cameraTime.w*.0018,0);let n=fbm(uv);let cloud=smoothstep(.63-u.env.x*.38,.76-u.env.x*.4,n)*smoothstep(0.,.14,rd.y);sky=mix(sky,mix(vec3f(.038,.052,.07),vec3f(.76,.78,.76),day)*( .65+n*.55),cloud*.92);}
  if(day<.25&&rd.y>.05){let star=pow(hash(floor(rd.xz/(rd.y+.5)*1100.)),1800.);sky+=vec3f(star*(1.-day*4.));}
+ let moonDir=normalize(vec3f(-u.sunDay.x,.38,-u.sunDay.z));
+ let moon=dot(rd,moonDir);sky+=vec3f(.40,.48,.63)*smoothstep(.9991,.9997,moon)*(1.-day);
+ if(u.env.z>1.5&&u.env.z<2.5&&day<.3&&rd.y>.08){
+  let curtain=sin(rd.x*8.+rd.z*5.+sin(rd.z*11.+u.cameraTime.w*.03)*.6);
+  let ribbon=exp(-pow((rd.y-.34-curtain*.12)*12.,2.));
+  sky+=mix(vec3f(.04,.33,.16),vec3f(.15,.05,.27),rd.y)*ribbon*(1.-day)*(.6+noise(rd.xz*75.)*.4);
+ }
  return sky;
 }
 `;
@@ -63,13 +70,17 @@ fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.
  if(kind>6.5&&kind<7.5){let grit=hash(floor(v.world.xz*23.));col*=.7+grit*.6;}
  let light=u.sunDay.xyz;let ndl=max(0.,dot(n,light));let visibility=shadeShadow(v.light,n);let hemi=mix(vec3f(.09,.105,.1),vec3f(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);
  let sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);
- let halfV=normalize(light+view);let ndh=max(0.,dot(n,halfV));let r=max(.06,rough);let alpha=r*r;let a2=alpha*alpha;let den=ndh*ndh*(a2-1.)+1.;let D=a2/(3.14159*den*den+.0001);let F=mix(vec3f(.035),col,metal)+(vec3f(1.)-mix(vec3f(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);let spec=F*D*.23;
- var color=col*(hemi+sun*(1.-metal*.65))+spec*sun;
+ let halfV=normalize(light+view);let ndh=max(0.,dot(n,halfV));let r=max(.06,rough);let alpha=r*r;let a2=alpha*alpha;let den=ndh*ndh*(a2-1.)+1.;let D=a2/(3.14159*den*den+.0001);let F=mix(vec3f(.035),col,metal)+(vec3f(1.)-mix(vec3f(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);let nv=max(.02,dot(n,view));let k=(r+1.)*(r+1.)/8.;
+ let G=nv/(nv*(1.-k)+k)*ndl/max(.001,ndl*(1.-k)+k);
+ let spec=F*D*G/max(.04,4.*nv*max(ndl,.02));
+ let cloudShadow=mix(1.,.70,smoothstep(.42,.75,fbm(v.world.xz*.00032+u.cameraTime.w*.0015))*u.env.x);
+ var color=col*hemi+((vec3f(1.)-F)*col*(1.-metal)/3.14159+spec)*sun*3.0*cloudShadow;
  if(kind>2.5&&kind<3.5){let refl=atmosphere(reflect(-view,n),false);let fr=.24+.65*pow(1.-max(0.,dot(n,view)),4.);color=mix(col*.4,refl,fr)+spec*sun*.35;}
  if(kind>1.5&&kind<2.5){let t=u.cameraTime.w;let wave=sin(v.world.x*.11+t*.9)*.05+sin(v.world.z*.17-t*.7)*.035; n=normalize(vec3f(wave,1.,cos(v.world.z*.09+t*.7)*.06));let fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);let reflection=atmosphere(reflect(-view,n),true);let sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;color=mix(pow(v.color.rgb,vec3f(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){color*=.7+noise(v.world.xz*3.1+vec2f(v.world.y*1.7))*.38;color+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}
  if(u.headPos.w>.01){let delta=v.world-u.headPos.xyz;let d=length(delta);let cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));color+=col*vec3f(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
  if(kind>8.5&&kind<9.5){let foam=.64+.36*noise(vec2f(v.world.x*1.2,v.world.y*.24+u.cameraTime.w*2.8));color=mix(color,vec3f(.64,.79,.82)*foam,.7);}
+ if(kind>9.5&&kind<10.5){let crest=.65+.35*sin(v.world.x*.09+v.world.z*.12-u.cameraTime.w*1.2);color=mix(color,vec3f(.65,.79,.79),crest*.72);}
  color+=col*emissive;
  let distance=length(v.world-u.cameraTime.xyz);let heightFog=exp(-max(v.world.y-u.env.w,0.)*.00085);let fog=1.-exp(-distance*u.fog.w*heightFog);color=mix(color,atmosphere(normalize(v.world-u.cameraTime.xyz),false),clamp(fog,0.,.99));
  return vec4f(aces(color),select(1.,v.color.a,kind>7.5));
@@ -86,9 +97,15 @@ layout(std140) uniform Frame {mat4 vp;mat4 invVP;mat4 lightVP;vec4 cameraTime;ve
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float noise(vec2 p){vec2 i=floor(p),a=fract(p),f=a*a*(3.-2.*a);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
 float fbm(vec2 p){float n=0.,a=.5;for(int i=0;i<4;i++){n+=noise(p)*a;p=p*2.03+vec2(13.4,7.1);a*=.5;}return n;}
-vec3 aces(vec3 c){vec3 x=max(c*u.sunExposure.w,vec3(0));return pow(clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.),vec3(1./2.2));}
+vec3 aces(vec3 c){
+#ifdef RAILBOUND_LDR_SCENE
+ vec3 x=max(c*u.sunExposure.w,vec3(0));return pow(clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.),vec3(1./2.2));
+#else
+ return clamp(c,0.,128.);
+#endif
+}
 vec3 atmosphere(vec3 rd,bool clouds){float day=u.sunDay.w,h=clamp(rd.y*.8+.18,0.,1.);vec3 horizon=mix(vec3(.018,.027,.055),pow(u.fog.rgb,vec3(2.2))*.95,day),zenith=mix(vec3(.002,.005,.018),vec3(.12,.30,.50),day);vec3 sky=mix(horizon,zenith,pow(h,.6));float sun=max(0.,dot(rd,u.sunDay.xyz));sky+=u.sunExposure.rgb*(pow(sun,1400.)*5.+pow(sun,22.)*.12)*day;sky+=vec3(.52,.21,.065)*pow(sun,9.)*(1.-smoothstep(.18,.55,u.sunDay.y))*day;
- if(clouds&&rd.y>0.){vec2 uv=rd.xz/max(.07,rd.y)*1.6+vec2(u.cameraTime.w*.0018,0);float n=fbm(uv),cloud=smoothstep(.63-u.env.x*.38,.76-u.env.x*.4,n)*smoothstep(0.,.14,rd.y);sky=mix(sky,mix(vec3(.038,.052,.07),vec3(.76,.78,.76),day)*(.65+n*.55),cloud*.92);}if(day<.25&&rd.y>.05){float star=pow(hash(floor(rd.xz/(rd.y+.5)*1100.)),1800.);sky+=vec3(star*(1.-day*4.));}return sky;}
+ if(clouds&&rd.y>0.){vec2 uv=rd.xz/max(.07,rd.y)*1.6+vec2(u.cameraTime.w*.0018,0);float n=fbm(uv),cloud=smoothstep(.63-u.env.x*.38,.76-u.env.x*.4,n)*smoothstep(0.,.14,rd.y);sky=mix(sky,mix(vec3(.038,.052,.07),vec3(.76,.78,.76),day)*(.65+n*.55),cloud*.92);}if(day<.25&&rd.y>.05){float star=pow(hash(floor(rd.xz/(rd.y+.5)*1100.)),1800.);sky+=vec3(star*(1.-day*4.));}vec3 moonDir=normalize(vec3(-u.sunDay.x,.38,-u.sunDay.z));float moon=dot(rd,moonDir);sky+=vec3(.40,.48,.63)*smoothstep(.9991,.9997,moon)*(1.-day);if(u.env.z>1.5&&u.env.z<2.5&&day<.3&&rd.y>.08){float curtain=sin(rd.x*8.+rd.z*5.+sin(rd.z*11.+u.cameraTime.w*.03)*.6),ribbon=exp(-pow((rd.y-.34-curtain*.12)*12.,2.));sky+=mix(vec3(.04,.33,.16),vec3(.15,.05,.27),rd.y)*ribbon*(1.-day)*(.6+noise(rd.xz*75.)*.4);}return sky;}
 `;
 export const GLSL_SKY_VS=`#version 300 es
 precision highp float;out vec2 ndc;void main(){vec2 p=gl_VertexID==0?vec2(-1,-1):gl_VertexID==1?vec2(3,-1):vec2(-1,3);ndc=p;gl_Position=vec4(p,.99999,1);}`;
@@ -124,12 +141,13 @@ void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=
  }
  if(kind>5.5&&kind<6.5)col*=.89+noise((world.xz+vec2(world.y*.71,world.y*.31))*5.)*.16;
  if(kind>6.5&&kind<7.5)col*=.7+hash(floor(world.xz*23.))*.6;
- vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(lightPos,n);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);vec3 spec=F*D*.23;vec3 result=col*(hemi+sun*(1.-metal*.65))+spec*sun;
+ vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(lightPos,n);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.06,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);float nv=max(.02,dot(n,view)),k=(r+1.)*(r+1.)/8.,G=nv/(nv*(1.-k)+k)*ndl/max(.001,ndl*(1.-k)+k);vec3 spec=F*D*G/max(.04,4.*nv*max(ndl,.02));float cloudShadow=mix(1.,.70,smoothstep(.42,.75,fbm(world.xz*.00032+u.cameraTime.w*.0015))*u.env.x);vec3 result=col*hemi+((vec3(1.)-F)*col*(1.-metal)/3.14159+spec)*sun*3.0*cloudShadow;
  if(kind>2.5&&kind<3.5){vec3 refl=atmosphere(reflect(-view,n),false);float fr=.24+.65*pow(1.-max(0.,dot(n,view)),4.);result=mix(col*.4,refl,fr)+spec*sun*.35;}
  if(kind>1.5&&kind<2.5){float t=u.cameraTime.w,wave=sin(world.x*.11+t*.9)*.05+sin(world.z*.17-t*.7)*.035;n=normalize(vec3(wave,1.,cos(world.z*.09+t*.7)*.06));float fr=.04+.88*pow(1.-max(0.,dot(n,view)),4.);vec3 reflection=atmosphere(reflect(-view,n),true);float sparkle=pow(max(0.,dot(reflect(-light,n),view)),170.)*u.sunDay.w*3.;result=mix(pow(color.rgb,vec3(2.2))*(.6+ndl*.45),reflection,fr)+u.sunExposure.rgb*sparkle;}
  if(kind>4.5&&kind<5.5){result*=.7+noise(world.xz*3.1+vec2(world.y*1.7))*.38;result+=col*max(0.,dot(-n,light))*.32*u.sunDay.w;}
  if(u.headPos.w>.01){vec3 delta=world-u.headPos.xyz;float d=length(delta),cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));result+=col*vec3(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
  if(kind>8.5&&kind<9.5){float foam=.64+.36*noise(vec2(world.x*1.2,world.y*.24+u.cameraTime.w*2.8));result=mix(result,vec3(.64,.79,.82)*foam,.7);}
+ if(kind>9.5&&kind<10.5){float crest=.65+.35*sin(world.x*.09+world.z*.12-u.cameraTime.w*1.2);result=mix(result,vec3(.65,.79,.79),crest*.72);}
  result+=col*emissive;float distance=length(world-u.cameraTime.xyz),heightFog=exp(-max(world.y-u.env.w,0.)*.00085),f=1.-exp(-distance*u.fog.w*heightFog);result=mix(result,atmosphere(normalize(world-u.cameraTime.xyz),false),clamp(f,0.,.99));outColor=vec4(aces(result),kind>7.5?color.a:1.);}`;
 export const GLSL_SHADOW_VS=`#version 300 es\n`+GLSL_COMMON+`layout(location=0) in vec3 aPos;layout(location=3) in mat4 model;void main(){gl_Position=u.lightVP*model*vec4(aPos,1);}`;
 export const GLSL_SHADOW_FS=`#version 300 es\nprecision highp float;void main(){}`;

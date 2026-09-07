@@ -1,3 +1,7 @@
+import {postOptions} from './postprocess.js';
+import {JourneyDirector} from './journey.js';
+import {WorldLife} from './world-life.js';
+import {installCinematicUI,togglePhotoMode} from './cinematic-ui.js';
 import {WORLDS,STOCK,WEATHER} from './data.js';
 import {clamp,mod,downloadFile} from './math.js';
 import {Renderer} from './renderer.js';
@@ -15,9 +19,9 @@ import {SAVE_KEY,storageGet,storageSet,validateProject,encodeProject} from './pe
 export class RailboundApp {
  constructor(){
   const mobile=matchMedia('(max-width: 760px)').matches;
-  this.settings={quality:mobile?'medium':'high',resolution:mobile?.8:1,shadows:true,adaptive:true,safety:true,units:'km/h',volume:.36,timeScale:1,gamepad:true};
+  this.settings={quality:mobile?'medium':'high',resolution:mobile?.8:1,shadows:true,adaptive:true,safety:true,units:'km/h',volume:.36,timeScale:1,gamepad:true,cinematic:postOptions(),wildlife:true,ambience:true,coach:true,cameraMotion:!matchMedia('(prefers-reduced-motion: reduce)').matches};
   this.env={hour:16.4,weather:'clear',timeRate:4,exposure:1,electrified:true};
-  this.camera=new CameraRig();this.audio=new RailAudio();this.rolling=new RollingStockRenderer();this.ui=new UI(this);
+  this.journey=new JourneyDirector();this.life=new WorldLife();this.camera=new CameraRig();this.audio=new RailAudio();this.rolling=new RollingStockRenderer();this.ui=new UI(this);
   this.renderer=new Renderer(document.getElementById('viewport'),message=>this.ui.toast(message,true));
   this.trains=[];this.player=null;this.world=null;this.mission=new Mission();this.keys=new Set();this.ready=false;this.renderEnabled=true;this.loadingWorld=false;this.paused=false;this.panelPause=false;this.autopilot=false;this.hidden=document.hidden;
   this.accumulator=0;this.simTime=0;this.uiClock=0;this.fps=0;this.fpsFrames=0;this.fpsClock=0;this.lastFrame=0;this.currentLimit=120;this.saveClock=0;this.adaptClock=0;this.gamepadButtons=[];this.userActive=false;this.lastSave=null;
@@ -25,7 +29,7 @@ export class RailboundApp {
   this.frame=this.frame.bind(this);
  }
  async initialize(){
-  await this.renderer.initialize();this.applySettings();this.bindInput();
+  await this.renderer.initialize();this.applySettings();this.bindInput();installCinematicUI(this);
   await this.loadWorld('alpine');this.ready=true;requestAnimationFrame(this.frame);
   if(this.existingSave)this.ui.toast('A previous journey is saved. Open Setup → Restore saved journey to continue.');
   if(this.renderer.lastError)this.ui.toast('WebGPU was unavailable. The WebGL 2 renderer is active.');
@@ -51,7 +55,7 @@ export class RailboundApp {
    }
    await next.build((label,progress)=>this.ui.loading(label,progress));
    const previous=this.world;
-   this.world=next;this.player=player;this.trains=trains;
+   this.world=next;this.player=player;this.trains=trains;this.life.reset(next);this.journey.reset(restored?.journey);
    this.env=restored?{...restored.env}:{...this.env,hour:def.hour,weather:def.id==='nordic'?'snow':'clear'};
    this.env.electrified=next.editor.electrified;next.weather=this.env.weather;
    if(restored)this.settings={...this.settings,...restored.settings};
@@ -72,7 +76,7 @@ export class RailboundApp {
   project.player.cursor=new RailCursor(candidate.network,near.edge,near.s).snapshot();project.player.speed=0;project.player.controls.throttle=0;project.player.controls.brake=.7;project.player.derailed=false;project.ai=[];project.mission={score:1000,stops:0,boarded:0};
   await this.loadWorld(project.world,editor,validateProject(project));this.userActive=true;
  }
- applySettings(){Object.assign(this.renderer.settings,{quality:this.settings.quality,resolution:this.settings.resolution,shadows:this.settings.shadows});this.audio.volume=this.settings.volume;this.adaptClock=0;}
+ applySettings(){Object.assign(this.renderer.settings,{quality:this.settings.quality,resolution:this.settings.resolution,shadows:this.settings.shadows});this.audio.volume=this.settings.volume;this.settings.cinematic=postOptions(this.settings.cinematic);this.renderer.post.options=this.settings.cinematic;this.audio.ambience=this.settings.ambience!==false;this.camera.motion=this.settings.cameraMotion!==false;this.adaptClock=0;}
  getSpeedLimit(train){const p=train.cursor.pose(),edge=this.world.network.edges.get(p.edge);return Math.min(train.stock.maxSpeed,edge.speedLimit(p.s));}
  togglePause(value){this.paused=typeof value==='boolean'?value:!this.paused;this.accumulator=0;this.keys.clear();this.audio.horn(false);this.ui.update();}
  teleport(edge,s){if(Math.abs(this.player.speed)>.15)throw new Error('Stop the train before repositioning it.');if(!this.world.network.edges.has(edge))throw new Error('Invalid rail section.');const cursor=new RailCursor(this.world.network,edge,clamp(s,0,this.world.network.edges.get(edge).length));const original=this.player.cursor;this.player.cursor=cursor;this.world.traffic.update(this.trains);if(this.world.traffic.contacts().some(pair=>pair.includes(this.player.id))){this.player.cursor=original;this.world.traffic.update(this.trains);throw new Error('That track is occupied.');}this.player.controls.throttle=0;this.player.controls.brake=.7;this.player.speed=0;this.camera.initial=true;this.userActive=true;this.mission.target=null;this.ui.toast('Train positioned.');}
@@ -92,7 +96,7 @@ export class RailboundApp {
   this.world.traffic.update(this.trains);
   for(const pair of this.world.traffic.contacts()){for(const id of pair){const t=this.trains.find(t=>t.id===id);if(t&&!t.derailed){t.derailed=true;t.failureReason='Train collision';t.speed=0;t.controls.parking=true;t.emergency();t.events.push('Train collision: both services stopped. Reposition the stopped train on clear track, then recover it in Setup.');}}}
   for(const t of this.trains){if(t.ai)this.world.traffic.controlAI(t,dt,this.world.stations,this.env);const limit=this.getSpeedLimit(t),danger=this.world.traffic.dangerDistance(t);t.step(dt,this.env,{safety:t.ai||this.settings.safety,limit,danger});if(t===this.player)this.currentLimit=limit;if(t.events.length){for(const event of t.events.splice(0))this.ui.toast(event,true);}}
-  this.mission.step(dt,this.player,this.world.stations,this.currentLimit);this.env.hour=mod(this.env.hour+dt*this.env.timeRate/3600,24);this.simTime+=dt;
+  this.mission.step(dt,this.player,this.world.stations,this.currentLimit);this.journey.step(dt,this.player,this.world,this.env,this.currentLimit,this.mission);this.env.hour=mod(this.env.hour+dt*this.env.timeRate/3600,24);this.simTime+=dt;
  }
  frame(timestamp){
   requestAnimationFrame(this.frame);if(!this.ready||this.loadingWorld||this.renderer.lost){this.lastFrame=timestamp;return;}
@@ -100,7 +104,7 @@ export class RailboundApp {
   const stopped=this.paused||this.panelPause||this.hidden;
   if(!stopped){this.pollControls(dt);this.accumulator+=Math.min(.25,elapsed*this.settings.timeScale);let steps=0;while(this.accumulator>=1/60&&steps++<16){this.tick(1/60);this.accumulator-=1/60;}if(steps>=16)this.accumulator=0;}else this.accumulator=0;
   this.world.weather=this.env.weather;this.env.electrified=this.world.editor.electrified;this.camera.update(this.player,this.world,dt,this.panelPause?null:this.keys);
-  this.audio.update(this.player,this.env.weather,stopped);this.fpsFrames++;this.fpsClock+=elapsed;this.uiClock+=elapsed;this.saveClock+=elapsed;this.adaptClock+=elapsed;
+  this.audio.update(this.player,this.env.weather,stopped,this.camera.mode,this.env.hour);this.fpsFrames++;this.fpsClock+=elapsed;this.uiClock+=elapsed;this.saveClock+=elapsed;this.adaptClock+=elapsed;
   if(this.fpsClock>=1){this.fps=this.fpsFrames/this.fpsClock;this.fpsClock=0;this.fpsFrames=0;}
   if(this.uiClock>.1){this.ui.update();this.uiClock=0;}
   if(this.saveClock>30){if(this.userActive)this.autosave();this.saveClock=0;}
@@ -108,7 +112,7 @@ export class RailboundApp {
   if(this.hidden||!this.renderEnabled)return;
   try{
    const dynamic=this.rolling.update(this.trains,this.world,this.camera,stopped?0:dt,this.simTime,this.camera.mode);
-   this.renderer.render([...this.world.batches,...dynamic],this.camera,this.world.def,this.env,this.player,this.simTime);
+   const life=this.life.update(this.world,this.camera,this.simTime,this.settings.quality,this.settings.wildlife);this.renderer.render([...this.world.batches,...dynamic,...life],this.camera,this.world.def,this.env,this.player,this.simTime);
    if(this.photoRequested){this.photoRequested=false;this.renderer.canvas.toBlob(blob=>{if(!blob)return this.ui.toast('Screenshot is unavailable in this browser.',true);downloadFile(`Railbound-${this.world.def.id}.png`,blob,'image/png');});}
   }catch(error){console.error(error);this.renderer.lost=true;this.ui.fatal(`Rendering stopped: ${error.message}`);}
  }
@@ -120,10 +124,12 @@ export class RailboundApp {
   const typing=()=>['SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||(document.activeElement?.tagName==='INPUT'&&document.activeElement.type!=='range');
   window.addEventListener('keydown',e=>{
    if((e.ctrlKey||e.metaKey)&&e.code==='KeyS'){e.preventDefault();this.exportProject();return;}
+   if(e.code==='F2'){e.preventDefault();togglePhotoMode(this);return;}
+   if(e.code==='Escape'&&this.photoMode){e.preventDefault();togglePhotoMode(this,false);return;}
    if(e.code==='Escape'){if(!this.ui.dialog.open){e.preventDefault();this.togglePause();}return;}
    if(typing()||this.panelPause||!this.player)return;
    if(['Space','KeyW','KeyS','KeyA','KeyD','KeyQ','KeyE','KeyH','KeyX','KeyC'].includes(e.code))e.preventDefault();
-   this.keys.add(e.code);this.userActive=true;if(e.repeat)return;
+   this.keys.add(e.code);this.userActive=true;if(this.photoMode||e.repeat)return;
    const actions={Space:()=>this.player.emergency(),KeyC:()=>this.ui.cycleCamera(1),KeyM:()=>this.ui.openPanel('map'),KeyO:()=>this.player.toggleDoors(),KeyL:()=>this.ui.toggleControl('headlights'),KeyP:()=>this.ui.toggleControl('pantograph'),KeyK:()=>this.ui.toggleControl('wipers'),KeyX:()=>this.player.controls.sand=true,KeyR:()=>this.player.setReverser(this.player.controls.reverser===1?0:this.player.controls.reverser===0?-1:1),KeyH:()=>this.audio.enable().then(()=>{if(this.keys.has('KeyH'))this.audio.horn(true);})};
    if(/^Digit[1-6]$/.test(e.code))this.camera.setMode(CAMERA_MODES[Number(e.code.at(-1))-1]);
    if(actions[e.code])this.ui.guard(actions[e.code]);

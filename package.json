@@ -1,6 +1,6 @@
 {
   "name": "railbound-adventures",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "type": "module",
   "description": "Railbound Expeditions: eroded procedural regions, surveyed railways, detailed rolling stock and WebGPU rendering",

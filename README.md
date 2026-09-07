@@ -1,5 +1,11 @@
 # Railbound Adventures
 
+## Cinematic Journeys
+
+Version 3.1 adds linear HDR rendering, soft bloom, four display looks, an interactive photo studio, a route-based driving coach and saved journey telemetry. Terrain-grounded foundations and aligned viaduct spans address visible world defects; the Velocity 320 gains a smooth lofted nose with surface glazing. Scenic bird flocks, shoreline foam, northern night lighting and layered synthesized rail audio add atmosphere. Display, wildlife, sound and reduced-motion controls are optional.
+
+Use **Studio / F2** for photo mode or **Journey** for route guidance. See [Cinematic architecture, controls and validation](docs/CINEMATIC-JOURNEYS.md) for the rendering contract and explicit boundaries.
+
 ## Expeditions: procedural worlds and detailed trains
 
 Version 3 replaces the shared circular geography with eight seeded regional terrain models, erosion, drainage-aware ecology, surveyed asymmetric routes, regional landmarks and scenic viewpoints. Trains gain cached mechanical assemblies, detailed wheel profiles, suspension, roof equipment and cab geometry with distance-based detail levels. Existing version-2 saves keep their original geography.

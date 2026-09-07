@@ -136,7 +136,7 @@ export function vehicleDetails(stock,index,last) {
    part('cylinder',[x,3.12,cabZ+.76],[.21,.016,.21],hex('#d9d7c5'),PAINT,[0,0,0],'cab');
    box([x,3.135,cabZ+.73],[.009,.007,.09],dark,RUBBER,'cab',2);
   }
-  if(stock.kind!=='steam')for(const side of [-1,1]) {
+  if(!['steam','highspeed'].includes(stock.kind))for(const side of [-1,1]) {
    const z=L*.487;pipe([side*.75,3.22,z+.025],[side*.36,4.14,z+.025],.035,dark,'wiper',1);
    box([side*.45,4.34,z],[.20,.06,.08],silver,STEEL,'detail',2);
    for(const dx of [-.25,.25])box([side*1.01+dx,2.55,L*.503],[.025,.37,.04],dark,STEEL);

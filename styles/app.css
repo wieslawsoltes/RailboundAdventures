@@ -23,3 +23,16 @@
 .expedition-action{display:block;text-align:left;padding:0 16px 14px;color:#d9c6a2;font:9px monospace;letter-spacing:.12em}
 @media(max-width:760px){.generation-controls{grid-template-columns:1fr 1fr;gap:12px}.expedition-head{align-items:flex-start;flex-direction:column;gap:10px}.expedition-grid .card-text p{font-size:10px}.expedition-preview{height:112px}}
 @media(max-width:380px){.generation-controls{grid-template-columns:1fr}.expedition-stats{gap:5px}}
+
+/* Cinematic Journeys: optional read-only guidance and non-modal photo controls. */
+.driver-coach{display:block;width:100%;margin:14px 0 0;padding:12px 0 0;border:0;border-top:1px solid #bad2b12b;background:transparent;color:#c4d8bc;text-align:left;line-height:1.5;font-size:11px;cursor:pointer}
+.driver-coach[hidden]{display:none}.coach-metrics{display:block;margin-top:7px;font-size:9px;color:#9cafa2}.coach-metrics b{color:#dfe7d2;margin-right:4px}.coach-metrics b+ b{margin-left:8px}.braking-advice #coach-message{color:#e8b97d}
+#photo-mode,#journey-open{font-size:11px;padding:6px 8px}body.photo-mode #app-ui,body.photo-mode .vignette,body.photo-mode #restore-hud{visibility:hidden;pointer-events:none}
+.photo-studio{position:fixed;z-index:35;bottom:max(22px,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);width:min(700px,calc(100vw - 32px));padding:18px;border-radius:13px;background:#152923eb;color:#e0e7d8;box-sizing:border-box}
+.studio-title{display:flex;gap:12px;justify-content:space-between;align-items:center;font-size:12px;letter-spacing:.1em}.studio-title small{display:block;font-size:10px;color:#a5b3a0;letter-spacing:0;margin-top:5px}.studio-fields{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:15px;align-items:end;margin-top:14px}.studio-fields label{display:grid;gap:8px;font-size:10px;text-transform:uppercase;color:#bdcdb5}.studio-fields input{width:100%;accent-color:#b9d5a7}.studio-fields select{max-width:100%;min-height:36px;background:#1d3429;color:#d8e4d0;border:1px solid #bacbaa44;border-radius:6px;padding:6px}
+#route-profile{width:100%;height:200px;border-radius:8px;display:block;margin:15px 0}.journey-stats{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:22px 0}.journey-stats div{border:1px solid #baceac25;border-radius:8px;padding:17px 12px;background:#a8c29908}.journey-stats b{display:block;font-size:27px;color:#d8e3c9;font-weight:500}.journey-stats span{display:block;font-size:10px;color:#a4b499;margin-top:6px}
+@media(max-width:760px){.driver-coach{margin-top:6px;font-size:10px;padding-top:7px}.coach-metrics{font-size:8px}#photo-mode,#journey-open{padding:4px;font-size:10px}.view-controls{max-width:calc(100vw - 22px)}.studio-fields{grid-template-columns:1fr 1fr}.photo-studio{padding:12px;bottom:12px}.journey-stats{grid-template-columns:repeat(2,1fr)}.journey-stats div:last-child{grid-column:1/-1}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important}.loading,.toast{animation:none!important;transition:none!important}}
+
+/* The display pass owns vignette; do not darken the scene a second time. */
+.vignette{display:none}
