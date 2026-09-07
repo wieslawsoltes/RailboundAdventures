@@ -1,0 +1,15 @@
+{
+  "date": "2026-09-07",
+  "javascriptSyntax": {
+    "files": 15,
+    "passed": true
+  },
+  "serviceWorkerAssets": {
+    "files": 22,
+    "allExist": true,
+    "offlineBrowserTested": false
+  },
+  "standaloneMatchesDistribution": true,
+  "externalRuntimeDependencies": 0,
+  "nativeWebGPURuntimeTested": false
+}

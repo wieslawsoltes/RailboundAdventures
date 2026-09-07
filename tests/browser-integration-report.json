@@ -1,0 +1,250 @@
+{
+  "browser": "Chromium, ANGLE SwiftShader WebGL2",
+  "results": [
+    {
+      "test": "WebGL2 fallback boot",
+      "passed": true
+    },
+    {
+      "test": "initial route and three trains",
+      "passed": true
+    },
+    {
+      "test": "open worlds",
+      "passed": true
+    },
+    {
+      "test": "worlds content populated",
+      "passed": true
+    },
+    {
+      "test": "open fleet",
+      "passed": true
+    },
+    {
+      "test": "fleet content populated",
+      "passed": true
+    },
+    {
+      "test": "open map",
+      "passed": true
+    },
+    {
+      "test": "map content populated",
+      "passed": true
+    },
+    {
+      "test": "open environment",
+      "passed": true
+    },
+    {
+      "test": "environment content populated",
+      "passed": true
+    },
+    {
+      "test": "open dispatch",
+      "passed": true
+    },
+    {
+      "test": "dispatch content populated",
+      "passed": true
+    },
+    {
+      "test": "open editor",
+      "passed": true
+    },
+    {
+      "test": "editor content populated",
+      "passed": true
+    },
+    {
+      "test": "open settings",
+      "passed": true
+    },
+    {
+      "test": "settings content populated",
+      "passed": true
+    },
+    {
+      "test": "open systems",
+      "passed": true
+    },
+    {
+      "test": "systems content populated",
+      "passed": true
+    },
+    {
+      "test": "open missions",
+      "passed": true
+    },
+    {
+      "test": "missions content populated",
+      "passed": true
+    },
+    {
+      "test": "open help",
+      "passed": true
+    },
+    {
+      "test": "help content populated",
+      "passed": true
+    },
+    {
+      "test": "departure causes actual powered motion",
+      "passed": true
+    },
+    {
+      "test": "emergency brake latched",
+      "passed": true
+    },
+    {
+      "test": "emergency braking stops train",
+      "passed": true
+    },
+    {
+      "test": "switch to steam locomotive",
+      "passed": true
+    },
+    {
+      "test": "consist configuration changes physical mass",
+      "passed": true
+    },
+    {
+      "test": "weather and wipers updated",
+      "passed": true
+    },
+    {
+      "test": "project restores camera, dispatch, and simulation clock",
+      "passed": true
+    },
+    {
+      "test": "project restores transient locomotive state",
+      "passed": true
+    },
+    {
+      "test": "project imports train, consist, and weather",
+      "passed": true
+    },
+    {
+      "test": "invalid import leaves current world intact",
+      "passed": true
+    },
+    {
+      "test": "dispatcher adds a real AI train",
+      "passed": true
+    },
+    {
+      "test": "editor stages scenery",
+      "passed": true
+    },
+    {
+      "test": "editor undo",
+      "passed": true
+    },
+    {
+      "test": "editor redo",
+      "passed": true
+    },
+    {
+      "test": "editor applies scene and persists object",
+      "passed": true
+    },
+    {
+      "test": "construct world coast",
+      "passed": true
+    },
+    {
+      "test": "construct world nordic",
+      "passed": true
+    },
+    {
+      "test": "construct world canyon",
+      "passed": true
+    },
+    {
+      "test": "construct world sakura",
+      "passed": true
+    },
+    {
+      "test": "construct world highland",
+      "passed": true
+    },
+    {
+      "test": "construct world pine",
+      "passed": true
+    },
+    {
+      "test": "construct world metro",
+      "passed": true
+    },
+    {
+      "test": "Railbound-Metropolis.png has a rendered scene",
+      "passed": true
+    },
+    {
+      "test": "construct world alpine",
+      "passed": true
+    },
+    {
+      "test": "Railbound-Desktop.png has a rendered scene",
+      "passed": true
+    },
+    {
+      "test": "Railbound-Cab.png has a rendered scene",
+      "passed": true
+    },
+    {
+      "test": "camera chase finite",
+      "passed": true
+    },
+    {
+      "test": "camera orbit finite",
+      "passed": true
+    },
+    {
+      "test": "camera aerial finite",
+      "passed": true
+    },
+    {
+      "test": "camera trackside finite",
+      "passed": true
+    },
+    {
+      "test": "camera free finite",
+      "passed": true
+    },
+    {
+      "test": "mobile page has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "test": "mobile throttle and brake visible",
+      "passed": true
+    },
+    {
+      "test": "mobile slider controls train",
+      "passed": true
+    },
+    {
+      "test": "Railbound-Mobile.png has a rendered scene",
+      "passed": true
+    },
+    {
+      "test": "mobile world controls accessible",
+      "passed": true
+    },
+    {
+      "test": "landscape page has no horizontal overflow",
+      "passed": true
+    },
+    {
+      "test": "Railbound-Mobile-Landscape.png has a rendered scene",
+      "passed": true
+    },
+    {
+      "test": "no browser JavaScript or console errors",
+      "passed": true
+    }
+  ],
+  "errors": []
+}

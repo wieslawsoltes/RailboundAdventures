@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#142422"><meta name="description" content="Railbound Adventures — a real-time railway sandbox with native WebGPU graphics, eight procedural worlds, driving physics and a world editor.">
+<title>Railbound Adventures · The railway is yours</title>
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml"><link rel="manifest" href="manifest.webmanifest"><link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+<svg class="icon-library" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="i-train" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="15" rx="4"/><path d="M5 11h14M9 4v7m6-7v7M8 18l-3 4m11-4 3 4M7 21h10"/><path d="M8 14h1m6 0h1"/></symbol>
+<symbol id="i-world" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c6 5 6 13 0 18-6-5-6-13 0-18z"/></symbol>
+<symbol id="i-map" viewBox="0 0 24 24"><path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2V5zm6-2v16m6-14v16"/></symbol>
+<symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+<symbol id="i-switch" viewBox="0 0 24 24"><path d="M7 21V3m-3 3 3-3 3 3m7 15v-5c0-5-10-5-10-10M4 18h6m4 0h6"/></symbol>
+<symbol id="i-build" viewBox="0 0 24 24"><path d="m14 6 4-4 4 4-4 4-4-4ZM3 21l11-11m-8 4 4 4M5 3l5 5-2 4-4-2-2-5z"/></symbol>
+<symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></symbol>
+<symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 7h4l2-3h6l2 3h4v14H3z"/><circle cx="12" cy="13" r="4"/></symbol>
+<symbol id="i-light" viewBox="0 0 24 24"><path d="M12 4c-11 0-11 16 0 16V4zm4 2h5m-5 6h6m-6 6h5"/></symbol>
+<symbol id="i-horn" viewBox="0 0 24 24"><path d="M4 10h5l8-5v14l-8-5H4v-4zm4 4 2 6h3l-2-5m9-7c2 2 2 6 0 8"/></symbol>
+<symbol id="i-door" viewBox="0 0 24 24"><path d="M4 21V3h16v18M12 3v18m-8-7h16m-9 3h2"/></symbol>
+<symbol id="i-power" viewBox="0 0 24 24"><path d="M12 2v10m-5-7a9 9 0 1 0 10 0"/></symbol>
+<symbol id="i-panto" viewBox="0 0 24 24"><path d="M2 3h20M6 7h12L6 18h12L6 7zm-3 14h18"/></symbol>
+<symbol id="i-wiper" viewBox="0 0 24 24"><path d="M2 16 5 4h14l3 12H2zm10 4 7-13"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke-width="3"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="m8 4 12 8-12 8V4z"/></symbol>
+<symbol id="i-save" viewBox="0 0 24 24"><path d="M3 3h14l4 4v14H3V3zm4 0v7h10V3M7 21v-7h10v7"/></symbol>
+<symbol id="i-volume" viewBox="0 0 24 24"><path d="M3 9h4l5-5v16l-5-5H3V9zm13-1c3 2 3 6 0 8m3-11c5 4 5 10 0 14"/></symbol>
+<symbol id="i-full" viewBox="0 0 24 24"><path d="M3 9V3h6m6 0h6v6M3 15v6h6m6 0h6v-6"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24"><path d="m5 5 14 14M5 19 19 5"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+<symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-11v1"/></symbol>
+<symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 22V3c5-4 9 4 15 0v10c-6 4-10-4-15 0"/></symbol>
+<symbol id="i-mountain" viewBox="0 0 24 24"><path d="m2 20 8-16 6 11 3-5 4 10H2zm5-10 3 2 2-3"/></symbol>
+<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+</defs></svg>
+<canvas id="viewport" aria-label="Interactive 3D railway world. Drag to look around; scroll to zoom." tabindex="0"></canvas>
+<div class="vignette" aria-hidden="true"></div>
+<div id="app-ui">
+<header class="topbar glass">
+<button class="brand" data-panel="worlds" aria-label="Choose a world"><span class="brand-emblem"><svg><use href="#i-train"/></svg></span><span class="brand-name">railbound<span>ADVENTURES</span></span></button>
+<div class="top-divider"></div><button class="location-button" data-panel="worlds"><span class="overline">YOUR NEXT GREAT JOURNEY</span><span><b id="world-name">Alpine Crossing</b><svg class="icon small"><use href="#i-chevron"/></svg></span></button>
+<div class="top-spacer"></div><div class="weather-top"><svg class="icon"><use href="#i-sun"/></svg><span id="clock">16:24</span><span class="muted" id="weather-name">Clear</span></div><span class="live-pill"><i></i><span>LIVE SIMULATION</span></span>
+<button class="icon-button" id="audio-toggle" title="Enable sound" aria-label="Enable sound"><svg class="icon"><use href="#i-volume"/></svg></button><button class="icon-button" id="pause-toggle" title="Pause (Esc)" aria-label="Pause simulation"><svg class="icon"><use href="#i-pause"/></svg></button><button class="icon-button desktop-only" id="fullscreen" title="Fullscreen" aria-label="Fullscreen"><svg class="icon"><use href="#i-full"/></svg></button>
+</header>
+<section class="journey-card glass" aria-label="Journey status">
+<div class="eyebrow"><span class="status-dot"></span><span id="mission-mode">FREE ROAM</span><button class="bare" data-panel="missions" title="Change scenario" aria-label="Change scenario"><svg class="icon small"><use href="#i-chevron"/></svg></button></div>
+<div class="journey-route"><span class="route-line"></span><div><span class="overline">CURRENT LOCATION</span><h2 id="current-station">Linden Central</h2><p id="journey-description">A little further from the everyday.</p></div></div>
+<button class="primary depart" id="depart"><span>Begin your journey</span><svg class="icon"><use href="#i-arrow"/></svg></button>
+<div class="journey-hint" id="journey-hint">Release the brake. Find your rhythm.</div>
+</section>
+<nav class="tool-rail glass" aria-label="Simulator tools">
+<button class="rail-button" data-panel="worlds" title="Worlds"><svg><use href="#i-world"/></svg><span>Worlds</span></button>
+<button class="rail-button" data-panel="fleet" title="Rolling stock"><svg><use href="#i-train"/></svg><span>Trains</span></button>
+<button class="rail-button" data-panel="map" title="Route map (M)"><svg><use href="#i-map"/></svg><span>Map</span></button>
+<button class="rail-button" data-panel="environment" title="Weather and time"><svg><use href="#i-sun"/></svg><span>World</span></button>
+<div class="rail-separator"></div>
+<button class="rail-button" data-panel="dispatch" title="Dispatcher"><svg><use href="#i-switch"/></svg><span>Traffic</span></button>
+<button class="rail-button" data-panel="editor" title="World editor"><svg><use href="#i-build"/></svg><span>Build</span></button>
+<button class="rail-button" data-panel="settings" title="Settings and save"><svg><use href="#i-settings"/></svg><span>Setup</span></button>
+</nav>
+<section class="minimap-card glass" aria-label="Route overview"><div><span class="overline">ROUTE OVERVIEW</span><button class="bare" data-panel="map" aria-label="Expand route map"><svg class="icon small"><use href="#i-full"/></svg></button></div><canvas id="minimap" width="440" height="260"></canvas><div class="map-caption"><span><i class="map-dot"></i> Your train</span><span id="route-length">11.2 km</span></div></section>
+<div class="view-controls glass"><button id="previous-camera" aria-label="Previous camera">‹</button><svg class="icon small"><use href="#i-camera"/></svg><button id="camera-cycle"><span id="camera-name">CHASE CAMERA</span><span class="keycap">C</span></button><button id="photo" aria-label="Take screenshot" title="Save screenshot">◎</button></div>
+<div id="paused-badge" class="paused-badge hidden">SIMULATION PAUSED <button id="resume">Resume</button></div>
+<div id="safety-banner" class="safety-banner hidden" role="status"></div>
+<section class="cab-deck glass" aria-label="Train driving controls">
+<div class="speed-section"><div class="train-ident"><svg class="icon small"><use href="#i-train"/></svg><button class="bare" data-panel="systems" id="train-name">AURORA E200</button><span class="live-led"></span></div><div class="speed-instrument"><svg class="speed-arc" viewBox="0 0 180 115" aria-hidden="true"><path class="arc-track" d="M 23 99 A 74 74 0 1 1 157 99"/><path id="speed-arc-fill" class="arc-fill" d="M 23 99 A 74 74 0 1 1 157 99" pathLength="100"/><path d="M26 96l6-3M19 66h7m14-30 5 5M90 15v7m49 14-5 5m27 25h-7m3 30-6-3" stroke="#667870" stroke-width="1" fill="none"/></svg><div class="speed-value"><b id="speed">0</b><span id="speed-unit">km/h</span></div><div class="speed-limit" title="Current line speed limit"><span id="limit">120</span></div></div></div>
+<div class="traction-group"><label class="lever"><span>POWER <b id="throttle-value">0%</b></span><input id="throttle" type="range" min="0" max="100" step="1" value="0" aria-label="Throttle"><span class="lever-ticks"><span>IDLE</span><span>TRACTION</span><span>MAX</span></span></label><label class="lever brake-lever"><span>TRAIN BRAKE <b id="brake-value">65%</b></span><input id="brake" type="range" min="0" max="100" step="1" value="65" aria-label="Train brake"><span class="lever-ticks"><span>RELEASE</span><span>SERVICE</span><span>FULL</span></span></label><div class="reverser"><span class="overline">DIRECTION</span><div><button data-direction="-1" title="Reverse">R</button><button data-direction="0" title="Neutral">N</button><button data-direction="1" class="active" title="Forward">F</button></div><span id="traction-status">BRAKE APPLIED</span></div></div>
+<div class="system-group"><div class="system-buttons"><button data-control="headlights" class="active" title="Headlights (L)"><svg><use href="#i-light"/></svg><span>Lights</span></button><button id="horn" title="Horn (H)"><svg><use href="#i-horn"/></svg><span>Horn</span></button><button data-control="doors" title="Doors (O)"><svg><use href="#i-door"/></svg><span>Doors</span></button><button data-control="pantograph" class="active" title="Pantograph (P)"><svg><use href="#i-panto"/></svg><span>Panto</span></button><button data-panel="systems" title="All train systems"><svg><use href="#i-settings"/></svg><span>Systems</span></button></div><div class="small-meters"><div><span>BRAKE PIPE</span><b><span id="pipe">5.0</span> <small>bar</small></b><i><em id="pipe-bar"></em></i></div><div><span>GRADIENT</span><b id="gradient">+0.0 ‰</b><i><em id="grade-bar"></em></i></div></div><button id="emergency" class="emergency" title="Emergency brake (Space)"><span class="stop-square"></span><span>EMERGENCY BRAKE</span><kbd>SPACE</kbd></button></div>
+<div class="next-stop"><div class="overline">NEXT STATION <button class="bare" data-panel="missions" title="Service and timetable"><svg class="icon small"><use href="#i-flag"/></svg></button></div><h3 id="next-name">Lake Brienz</h3><div class="stop-distance"><b id="next-distance">1.6</b><span id="next-unit">km</span><span class="eta" id="next-eta">DEPART WHEN READY</span></div><div class="route-progress"><i id="route-progress"></i><span></span></div><div class="next-meta"><span id="signal-status"><i></i> Line clear</span><span id="mass">198 t</span></div></div>
+</section>
+<footer class="footer"><span class="keyboard-hints"><kbd>W</kbd><kbd>S</kbd> Power <span>·</span> <kbd>A</kbd><kbd>D</kbd> Brake <span>·</span> Drag to look <span>·</span> Scroll to zoom</span><button id="help" class="bare" data-panel="help">Driving guide <svg class="icon small"><use href="#i-info"/></svg></button><span class="render-status"><i></i><b id="backend">INITIALIZING</b><span id="fps">— FPS</span><span class="desktop-only" id="render-detail"></span></span></footer>
+</div>
+<button id="restore-hud" class="restore-hud hidden">Show controls</button>
+<div id="toasts" aria-live="polite"></div>
+<dialog id="panel-dialog"><div class="dialog-header"><div><span id="panel-overline" class="overline">RAILBOUND ADVENTURES</span><h1 id="panel-title">Explore worlds</h1></div><button id="close-dialog" class="icon-button" aria-label="Close panel"><svg class="icon"><use href="#i-close"/></svg></button></div><div id="panel-content"></div></dialog>
+<div id="loading" class="loading"><div class="loading-inner"><span class="loading-mark"><svg><use href="#i-train"/></svg></span><h1>railbound<span>ADVENTURES</span></h1><p>The railway is yours.</p><div class="loading-progress"><i id="loading-progress"></i></div><div id="loading-label">Starting the graphics engine</div><small>Eight worlds. Endless journeys.</small></div></div>
+<div id="fatal" class="fatal hidden"><h1>The renderer needs your attention</h1><p id="fatal-message"></p><button onclick="location.reload()" class="primary">Try again</button><p class="muted">Use HTTPS or localhost, and a browser with WebGPU or WebGL 2 enabled.</p></div>
+<input id="project-file" type="file" accept=".json,.railbound,application/json" hidden>
+<script type="module" src="src/main.js"></script>
+</body></html>

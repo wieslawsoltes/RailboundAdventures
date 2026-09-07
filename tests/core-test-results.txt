@@ -1,0 +1,188 @@
+
+> railbound-adventures@2.0.0 test
+> node --test tests/*.test.js
+
+TAP version 13
+# Subtest: column-major matrix inversion and multiplication
+ok 1 - column-major matrix inversion and multiplication
+  ---
+  duration_ms: 1.219252
+  type: 'test'
+  ...
+# Subtest: local frame follows its forward vector
+ok 2 - local frame follows its forward vector
+  ---
+  duration_ms: 0.660417
+  type: 'test'
+  ...
+# Subtest: WebGPU and WebGL perspective depth conventions
+ok 3 - WebGPU and WebGL perspective depth conventions
+  ---
+  duration_ms: 0.166566
+  type: 'test'
+  ...
+# Subtest: orthographic near and far depth
+ok 4 - orthographic near and far depth
+  ---
+  duration_ms: 0.167037
+  type: 'test'
+  ...
+# Subtest: random worlds are reproducible
+ok 5 - random worlds are reproducible
+  ---
+  duration_ms: 0.464006
+  type: 'test'
+  ...
+# Subtest: all eight world networks contain finite continuous rail geometry
+ok 6 - all eight world networks contain finite continuous rail geometry
+  ---
+  duration_ms: 91.504977
+  type: 'test'
+  ...
+# Subtest: cursor crosses turnout and retains car route history
+ok 7 - cursor crosses turnout and retains car route history
+  ---
+  duration_ms: 1.962381
+  type: 'test'
+  ...
+# Subtest: cursor traverses many laps with bounded history
+ok 8 - cursor traverses many laps with bounded history
+  ---
+  duration_ms: 4.231375
+  type: 'test'
+  ...
+# Subtest: snapshot and restore preserve exact cursor position
+ok 9 - snapshot and restore preserve exact cursor position
+  ---
+  duration_ms: 2.327711
+  type: 'test'
+  ...
+# Subtest: spatial index resolves nearest rail sample
+ok 10 - spatial index resolves nearest rail sample
+  ---
+  duration_ms: 1.382914
+  type: 'test'
+  ...
+# Subtest: train accelerates under traction and consumes energy
+ok 11 - train accelerates under traction and consumes energy
+  ---
+  duration_ms: 14.725633
+  type: 'test'
+  ...
+# Subtest: air brake pipe applies progressively and releases at a bounded rate
+ok 12 - air brake pipe applies progressively and releases at a bounded rate
+  ---
+  duration_ms: 11.927872
+  type: 'test'
+  ...
+# Subtest: emergency brake stops a moving train and latches
+ok 13 - emergency brake stops a moving train and latches
+  ---
+  duration_ms: 13.939436
+  type: 'test'
+  ...
+# Subtest: doors and reverser interlock while moving
+ok 14 - doors and reverser interlock while moving
+  ---
+  duration_ms: 1.40045
+  type: 'test'
+  ...
+# Subtest: doors, pantograph, master and unpowered route prevent traction
+ok 15 - doors, pantograph, master and unpowered route prevent traction
+  ---
+  duration_ms: 20.680421
+  type: 'test'
+  ...
+# Subtest: wet rails reduce available tractive effort; sanding improves it
+ok 16 - wet rails reduce available tractive effort; sanding improves it
+  ---
+  duration_ms: 14.500956
+  type: 'test'
+  ...
+# Subtest: reverse traction causes signed reverse rail motion
+ok 17 - reverse traction causes signed reverse rail motion
+  ---
+  duration_ms: 11.962103
+  type: 'test'
+  ...
+# Subtest: fixed-step trajectory is deterministic
+ok 18 - fixed-step trajectory is deterministic
+  ---
+  duration_ms: 49.05842
+  type: 'test'
+  ...
+# Subtest: invalid time steps are rejected
+ok 19 - invalid time steps are rejected
+  ---
+  duration_ms: 1.242276
+  type: 'test'
+  ...
+# Subtest: whole consist occupies blocks and signals detect another train
+ok 20 - whole consist occupies blocks and signals detect another train
+  ---
+  duration_ms: 1.450444
+  type: 'test'
+  ...
+# Subtest: dispatch signal hold and turnout protection are operational
+ok 21 - dispatch signal hold and turnout protection are operational
+  ---
+  duration_ms: 0.887963
+  type: 'test'
+  ...
+# Subtest: passenger mission rewards a completed station dwell
+ok 22 - passenger mission rewards a completed station dwell
+  ---
+  duration_ms: 2.430152
+  type: 'test'
+  ...
+# Subtest: project validation rejects malformed, unsupported and excessive data
+ok 23 - project validation rejects malformed, unsupported and excessive data
+  ---
+  duration_ms: 2.394519
+  type: 'test'
+  ...
+# Subtest: project serialization restores train and controls
+ok 24 - project serialization restores train and controls
+  ---
+  duration_ms: 2.011113
+  type: 'test'
+  ...
+# Subtest: terrain brushes and custom track nodes change real world geometry
+ok 25 - terrain brushes and custom track nodes change real world geometry
+  ---
+  duration_ms: 2.964733
+  type: 'test'
+  ...
+# Subtest: AI departs after a station dwell rather than repeatedly reopening doors
+ok 26 - AI departs after a station dwell rather than repeatedly reopening doors
+  ---
+  duration_ms: 275.651261
+  type: 'test'
+  ...
+# Subtest: collision intervals distinguish overlapping and separated train consists
+ok 27 - collision intervals distinguish overlapping and separated train consists
+  ---
+  duration_ms: 1.444446
+  type: 'test'
+  ...
+# Subtest: door and emergency power cuts are immediate even with traction lag
+ok 28 - door and emergency power cuts are immediate even with traction lag
+  ---
+  duration_ms: 3.596686
+  type: 'test'
+  ...
+# Subtest: invalid cursor connectivity and nonfinite odometers are contained
+ok 29 - invalid cursor connectivity and nonfinite odometers are contained
+  ---
+  duration_ms: 1.754915
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 623.790455
