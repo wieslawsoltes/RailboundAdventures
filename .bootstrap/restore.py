@@ -17,3 +17,13 @@ with tarfile.open(fileobj=io.BytesIO(data), mode='r:xz') as archive:
         assert member.isfile() or member.isdir(), 'Only regular files and directories are permitted'
     archive.extractall('.', filter='data')
 print('Verified source archive:', expected)
+
+# Use the complete Chromium distribution, not the reduced headless shell.
+# Keep diagnostics in the editable test harness so CI failures are actionable.
+test = Path('tools/integration_browser.py')
+source = test.read_text()
+source = source.replace("executable_path=os.environ.get('CHROMIUM_EXECUTABLE')", "executable_path=os.environ.get('CHROMIUM_EXECUTABLE') or p.chromium.executable_path")
+source = source.replace("page.on('pageerror',lambda e:errors.append(str(e)))", "page.on('pageerror',lambda e:(errors.append(str(e)),print('PAGE ERROR:',str(e),flush=True)))")
+source = source.replace("page.on('console',lambda m:console_errors.append(m.text) if m.type=='error' else None)", "page.on('console',lambda m:(console_errors.append(m.text),print('CONSOLE ERROR:',m.text,flush=True)) if m.type=='error' else None)")
+source = source.replace("print('FAILED',exc)", "print('FAILED',exc,flush=True);print('STARTUP DIAGNOSTICS',page.evaluate('({ready:globalThis.railbound?.ready,renderer:globalThis.railbound?.renderer.kind,lost:globalThis.railbound?.renderer.lost,error:globalThis.railbound?.renderer.lastError,fatal:document.getElementById(\"fatal-message\")?.textContent})'),flush=True)")
+test.write_text(source)
