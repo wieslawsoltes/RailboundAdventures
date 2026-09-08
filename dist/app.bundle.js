@@ -946,8 +946,8 @@ const {mat4Mul,lookAt,orthographic,add,mul,norm} = __m_src_math_js;
 
 const SHADOW_EXTENTS=Object.freeze([72,280,1100]);
 function stabilizedShadow(target,direction,extent,size,gpu=true){
- if(!target.every(Number.isFinite)||!direction.every(Number.isFinite)||!(extent>0)||!(size>0))throw new RangeError('Invalid shadow projection');
- const light=norm(direction),matrix=mat4Mul(orthographic(-extent,extent,-extent,extent,1,5000,gpu),lookAt(add(target,mul(light,2300)),target));
+ if(!target||target.length!==3||!direction||direction.length!==3||!target.every(Number.isFinite)||!direction.every(Number.isFinite)||Math.hypot(...direction)<.0001||!Number.isFinite(extent)||!Number.isFinite(size)||!(extent>0)||!(size>0))throw new RangeError('Invalid shadow projection');
+ const light=norm(direction),matrix=mat4Mul(orthographic(-extent,extent,-extent,extent,1,5000,gpu),lookAt(add(target,mul(light,2300)),target,Math.abs(light[1])>.999?[0,0,1]:[0,1,0]));
  matrix[12]=Math.round(matrix[12]*size*.5)/(size*.5);matrix[13]=Math.round(matrix[13]*size*.5)/(size*.5);return matrix;
 }
 function shadowCascadeCount(quality){return quality==='low'?1:3;}
@@ -960,24 +960,38 @@ const __m_src_fidelity_shaders_js = (() => {
 /** Texture-backed material evaluation in linear light. The same eight-layer
  * contract is used by WGSL and GLSL. Gradients are captured before divergence.
  */
+// Smooth, non-folding domain warp for natural surfaces. The analytic Jacobian
+// keeps mip/anisotropic footprints correct; built surfaces retain metric UVs.
+function warpNaturalUV(uv, gradient=[0,0]) {
+ if (![...uv,...gradient].every(Number.isFinite)||uv.length!==2||gradient.length!==2) throw new TypeError('Finite UV and gradient required');
+ const a=uv[0]*.17+uv[1]*.09,b=uv[0]*-.11+uv[1]*.19;
+ return {uv:[uv[0]+2.4*Math.sin(a),uv[1]+2.4*Math.sin(b)],
+  gradient:[gradient[0]+2.4*Math.cos(a)*(gradient[0]*.17+gradient[1]*.09),gradient[1]+2.4*Math.cos(b)*(gradient[0]*-.11+gradient[1]*.19)]};
+}
 const SURFACE_WGSL=/* wgsl */`
 @group(0) @binding(3) var materialColor:texture_2d_array<f32>;
 @group(0) @binding(4) var materialSurface:texture_2d_array<f32>;
 @group(0) @binding(5) var materialSampler:sampler;
 struct Surface {color:vec3f,bump:vec3f,rough:f32,ao:f32};
+fn naturalUV(p:vec2f)->vec2f{return p+2.4*sin(vec2f(dot(p,vec2f(.17,.09)),dot(p,vec2f(-.11,.19))));}
+fn naturalGradient(p:vec2f,d:vec2f)->vec2f{return d+2.4*cos(vec2f(dot(p,vec2f(.17,.09)),dot(p,vec2f(-.11,.19))))*vec2f(dot(d,vec2f(.17,.09)),dot(d,vec2f(-.11,.19)));}
+fn naturalBump(p:vec2f,b:vec2f)->vec2f{let c=2.4*cos(vec2f(dot(p,vec2f(.17,.09)),dot(p,vec2f(-.11,.19))));return b+vec2f(c.x*.17*b.x-c.y*.11*b.y,c.x*.09*b.x+c.y*.19*b.y);}
 fn readSurface(p:vec3f,n:vec3f,dx:vec3f,dy:vec3f,layer:i32,scale:f32)->Surface {
  let s=sign(n+vec3f(.00001));let ww=pow(abs(n),vec3f(6.));let w=ww/max(dot(ww,vec3f(1)),.0001);
- let x=vec2f(-s.x*p.z,p.y)*scale;let y=vec2f(p.x,-s.y*p.z)*scale;let z=vec2f(s.z*p.x,p.y)*scale;
- let xdx=vec2f(-s.x*dx.z,dx.y)*scale;let xdy=vec2f(-s.x*dy.z,dy.y)*scale;
- let ydx=vec2f(dx.x,-s.y*dx.z)*scale;let ydy=vec2f(dy.x,-s.y*dy.z)*scale;
- let zdx=vec2f(s.z*dx.x,dx.y)*scale;let zdy=vec2f(s.z*dy.x,dy.y)*scale;
+ var x=vec2f(-s.x*p.z,p.y)*scale;var y=vec2f(p.x,-s.y*p.z)*scale;var z=vec2f(s.z*p.x,p.y)*scale;
+ var xdx=vec2f(-s.x*dx.z,dx.y)*scale;var xdy=vec2f(-s.x*dy.z,dy.y)*scale;
+ var ydx=vec2f(dx.x,-s.y*dx.z)*scale;var ydy=vec2f(dy.x,-s.y*dy.z)*scale;
+ var zdx=vec2f(s.z*dx.x,dx.y)*scale;var zdy=vec2f(s.z*dy.x,dy.y)*scale;
+ let sourceX=x;let sourceY=y;let sourceZ=z;
+ if(layer<3){xdx=naturalGradient(x,xdx);xdy=naturalGradient(x,xdy);ydx=naturalGradient(y,ydx);ydy=naturalGradient(y,ydy);zdx=naturalGradient(z,zdx);zdy=naturalGradient(z,zdy);x=naturalUV(x);y=naturalUV(y);z=naturalUV(z);}
  let ca=textureSampleGrad(materialColor,materialSampler,x,layer,xdx,xdy).rgb;
  let cb=textureSampleGrad(materialColor,materialSampler,y,layer,ydx,ydy).rgb;
  let cc=textureSampleGrad(materialColor,materialSampler,z,layer,zdx,zdy).rgb;
  let a=textureSampleGrad(materialSurface,materialSampler,x,layer,xdx,xdy);
  let b=textureSampleGrad(materialSurface,materialSampler,y,layer,ydx,ydy);
  let c=textureSampleGrad(materialSurface,materialSampler,z,layer,zdx,zdy);
- let ax=(a.xy*2.-1.);let by=(b.xy*2.-1.);let cz=(c.xy*2.-1.);
+ var ax=(a.xy*2.-1.);var by=(b.xy*2.-1.);var cz=(c.xy*2.-1.);
+ if(layer<3){ax=naturalBump(sourceX,ax);by=naturalBump(sourceY,by);cz=naturalBump(sourceZ,cz);}
  var result:Surface;result.color=ca*w.x+cb*w.y+cc*w.z;
  result.bump=vec3f(0,ax.y,-s.x*ax.x)*w.x+vec3f(by.x,0,-s.y*by.y)*w.y+vec3f(s.z*cz.x,cz.y,0)*w.z;
  result.rough=dot(vec3f(a.z,b.z,c.z),w);result.ao=dot(vec3f(a.w,b.w,c.w),w);return result;
@@ -988,8 +1002,9 @@ fn octNormal(n:vec3f)->vec2f{let p=n/(abs(n.x)+abs(n.y)+abs(n.z));return select(
 fn roomRay(cell:vec2f,view:vec3f,n:vec3f,t:vec3f,seed:f32)->vec3f {
  let tangent=normalize(t);let up=normalize(cross(n,tangent));
  let origin=vec3f(cell*2.-1.,.999);let direction=vec3f(-dot(view,tangent),-dot(view,up),-max(.07,abs(dot(view,n))));
- let inv=sign(direction+vec3f(.00001))/max(abs(direction),vec3f(.00001));
- let hitT=(sign(direction)-origin)*inv;let hit=origin+direction*min(min(hitT.x,hitT.y),hitT.z);
+ let face=select(vec3f(-1),vec3f(1),direction>=vec3f(0));
+ let inv=face/max(abs(direction),vec3f(.00001));
+ let hitT=(face-origin)*inv;let hit=origin+direction*min(min(hitT.x,hitT.y),hitT.z);
  let floorTone=mix(vec3f(.15,.085,.045),vec3f(.12,.135,.14),seed);
  let wallTone=mix(vec3f(.32,.30,.24),vec3f(.16,.24,.27),seed);
  var room=wallTone*(.60+.24*hit.z);
@@ -1006,15 +1021,21 @@ fn roomRay(cell:vec2f,view:vec3f,n:vec3f,t:vec3f,seed:f32)->vec3f {
 const SURFACE_GLSL=/* glsl */`
 precision highp sampler2DArray;uniform sampler2DArray materialColor,materialSurface;
 struct Surface{vec3 color;vec3 bump;float rough;float ao;};
+vec2 naturalUV(vec2 p){return p+2.4*sin(vec2(dot(p,vec2(.17,.09)),dot(p,vec2(-.11,.19))));}
+vec2 naturalGradient(vec2 p,vec2 d){return d+2.4*cos(vec2(dot(p,vec2(.17,.09)),dot(p,vec2(-.11,.19))))*vec2(dot(d,vec2(.17,.09)),dot(d,vec2(-.11,.19)));}
+vec2 naturalBump(vec2 p,vec2 b){vec2 c=2.4*cos(vec2(dot(p,vec2(.17,.09)),dot(p,vec2(-.11,.19))));return b+vec2(c.x*.17*b.x-c.y*.11*b.y,c.x*.09*b.x+c.y*.19*b.y);}
 Surface readSurface(vec3 p,vec3 n,vec3 dx,vec3 dy,int layer,float scale){
  vec3 s=sign(n+vec3(.00001)),ww=pow(abs(n),vec3(6.)),w=ww/max(dot(ww,vec3(1)),.0001);
  vec2 x=vec2(-s.x*p.z,p.y)*scale,y=vec2(p.x,-s.y*p.z)*scale,z=vec2(s.z*p.x,p.y)*scale;
  vec2 xdx=vec2(-s.x*dx.z,dx.y)*scale,xdy=vec2(-s.x*dy.z,dy.y)*scale;
  vec2 ydx=vec2(dx.x,-s.y*dx.z)*scale,ydy=vec2(dy.x,-s.y*dy.z)*scale;
  vec2 zdx=vec2(s.z*dx.x,dx.y)*scale,zdy=vec2(s.z*dy.x,dy.y)*scale;
+ vec2 sourceX=x,sourceY=y,sourceZ=z;
+ if(layer<3){xdx=naturalGradient(x,xdx);xdy=naturalGradient(x,xdy);ydx=naturalGradient(y,ydx);ydy=naturalGradient(y,ydy);zdx=naturalGradient(z,zdx);zdy=naturalGradient(z,zdy);x=naturalUV(x);y=naturalUV(y);z=naturalUV(z);}
  vec3 ca=textureGrad(materialColor,vec3(x,float(layer)),xdx,xdy).rgb,cb=textureGrad(materialColor,vec3(y,float(layer)),ydx,ydy).rgb,cc=textureGrad(materialColor,vec3(z,float(layer)),zdx,zdy).rgb;
  vec4 a=textureGrad(materialSurface,vec3(x,float(layer)),xdx,xdy),b=textureGrad(materialSurface,vec3(y,float(layer)),ydx,ydy),c=textureGrad(materialSurface,vec3(z,float(layer)),zdx,zdy);
- vec2 ax=a.xy*2.-1.,by=b.xy*2.-1.,cz=c.xy*2.-1.;Surface result;
+ vec2 ax=a.xy*2.-1.,by=b.xy*2.-1.,cz=c.xy*2.-1.;
+ if(layer<3){ax=naturalBump(sourceX,ax);by=naturalBump(sourceY,by);cz=naturalBump(sourceZ,cz);}Surface result;
  result.color=ca*w.x+cb*w.y+cc*w.z;result.bump=vec3(0,ax.y,-s.x*ax.x)*w.x+vec3(by.x,0,-s.y*by.y)*w.y+vec3(s.z*cz.x,cz.y,0)*w.z;
  result.rough=dot(vec3(a.z,b.z,c.z),w);result.ao=dot(vec3(a.w,b.w,c.w),w);return result;
 }
@@ -1023,7 +1044,7 @@ vec3 bumpNormal(vec3 n,vec3 b){return normalize(n+(b-n*dot(n,b))*u.fidelity.y);}
 vec2 octNormal(vec3 n){vec3 p=n/(abs(n.x)+abs(n.y)+abs(n.z));return (p.z<0.?(1.-abs(p.yx))*sign(p.xy+vec2(.00001)):p.xy)*.5+.5;}
 vec3 roomRay(vec2 cell,vec3 view,vec3 n,vec3 t,float seed){
  vec3 tangent=normalize(t),up=normalize(cross(n,tangent));vec3 origin=vec3(cell*2.-1.,.999),direction=vec3(-dot(view,tangent),-dot(view,up),-max(.07,abs(dot(view,n))));
- vec3 inv=sign(direction+vec3(.00001))/max(abs(direction),vec3(.00001)),hitT=(sign(direction)-origin)*inv,hit=origin+direction*min(min(hitT.x,hitT.y),hitT.z);
+ vec3 face=mix(vec3(-1),vec3(1),step(vec3(0),direction));vec3 inv=face/max(abs(direction),vec3(.00001)),hitT=(face-origin)*inv,hit=origin+direction*min(min(hitT.x,hitT.y),hitT.z);
  vec3 floorTone=mix(vec3(.15,.085,.045),vec3(.12,.135,.14),seed),wallTone=mix(vec3(.32,.30,.24),vec3(.16,.24,.27),seed),room=wallTone*(.60+.24*hit.z);
  if(abs(hit.x)>.998)room=wallTone*.47;
  if(hit.y<-.998){float boards=.8+.2*step(.04,fract((hit.x+hit.z*.2)*8.));room=floorTone*boards;}
@@ -1039,7 +1060,9 @@ const SURFACE_APPLY_WGSL=/* wgsl */`
    let slope=1.-max(0.,rawNormal.y);let moisture=clamp(v.uv.x,0.,1.);let macroNoise=fbm(v.world.xz*.0023);
    let soilWeight=clamp((1.-moisture)*.7+smoothstep(.35,.65,fbm(v.world.xz*.018))*.48,0.,.82);
    let loam=readSurface(v.world,rawNormal,worldDx,worldDy,1,1./1.4);
-   let grass=readSurface(v.world,rawNormal,worldDx,worldDy,0,1./2.1);
+   var grass=readSurface(v.world,rawNormal,worldDx,worldDy,0,1./2.1);
+   let biomeGrass=pow(u.ground.rgb,vec3f(2.2));
+   grass.color=mix(grass.color,biomeGrass*clamp(grass.color/vec3f(.324265,.299196,.106823),vec3f(.25),vec3f(2.5)),.78);
    var terrain=blendSurface(grass,loam,soilWeight);
    let rockWeight=smoothstep(.08,.40,slope);
    if(rockWeight>.001){terrain=blendSurface(terrain,readSurface(v.world,rawNormal,worldDx,worldDy,2,1./3.),rockWeight);}
@@ -1071,7 +1094,10 @@ const SURFACE_APPLY_GLSL=/* glsl */`
   if(kind>.5&&kind<1.5){
    float slope=1.-max(0.,rawNormal.y),moisture=clamp(uv.x,0.,1.),macroNoise=fbm(world.xz*.0023);
    float soilWeight=clamp((1.-moisture)*.7+smoothstep(.35,.65,fbm(world.xz*.018))*.48,0.,.82);
-   Surface loam=readSurface(world,rawNormal,worldDx,worldDy,1,1./1.4),grass=readSurface(world,rawNormal,worldDx,worldDy,0,1./2.1),terrain=blendSurface(grass,loam,soilWeight);
+   Surface loam=readSurface(world,rawNormal,worldDx,worldDy,1,1./1.4),grass=readSurface(world,rawNormal,worldDx,worldDy,0,1./2.1);
+   vec3 biomeGrass=pow(u.ground.rgb,vec3(2.2));
+   grass.color=mix(grass.color,biomeGrass*clamp(grass.color/vec3(.324265,.299196,.106823),vec3(.25),vec3(2.5)),.78);
+   Surface terrain=blendSurface(grass,loam,soilWeight);
    float rockWeight=smoothstep(.08,.40,slope);if(rockWeight>.001)terrain=blendSurface(terrain,readSurface(world,rawNormal,worldDx,worldDy,2,1./3.),rockWeight);
    vec3 albedo=terrain.color*(.80+macroNoise*.45);
    if(u.env.z>2.5&&u.env.z<3.5)albedo=mix(loam.color*vec3(2.8,1.55,.85),terrain.color*vec3(1.65,1.05,.66),rockWeight);
@@ -1094,7 +1120,7 @@ const SURFACE_APPLY_GLSL=/* glsl */`
  rough=clamp(sqrt(rough*rough+normalVariance),.08,1.);metal=clamp(metal,0.,1.);
 `;
 
-return {SURFACE_WGSL,SURFACE_GLSL,SURFACE_APPLY_WGSL,SURFACE_APPLY_GLSL};
+return {warpNaturalUV,SURFACE_WGSL,SURFACE_GLSL,SURFACE_APPLY_WGSL,SURFACE_APPLY_GLSL};
 })();
 // ---- src/living-shaders.js ----
 const __m_src_living_shaders_js = (() => {
@@ -1520,6 +1546,13 @@ const {hex,transform,mat4Mul,add} = __m_src_math_js;
 const STONE=hex('#c4bfb0'),FRAME=hex('#4d5857'),METAL=hex('#354241'),TIMBER=hex('#7d6950');
 const terrain=(w,x,z)=>w.surfaceHeight?.(x,z)??w.height(x,z);
 const ARCHITECTURE_DETAIL_RANGE=360;
+/** CPU reference for the shader room-box intersection, including zero ray axes. */
+function traceWindowRoom(cell,direction){
+ if(!cell||cell.length!==2||!direction||direction.length!==3||![...cell,...direction].every(Number.isFinite)||cell.some(x=>x<0||x>1)||direction[2]>=0)throw new RangeError('Invalid interior ray');
+ const origin=[cell[0]*2-1,cell[1]*2-1,.999];
+ const times=direction.map((d,i)=>{const sign=d<0?-1:1;return (sign-origin[i])*sign/Math.max(Math.abs(d),.00001);});
+ const t=Math.min(...times);return origin.map((x,i)=>x+t*direction[i]);
+}
 function facadeWindows(width,height,modern=false){
  if(![width,height].every(Number.isFinite)||width<=0||height<=0)return [];
  const margin=modern?.065:.19,windows=[];
@@ -1608,7 +1641,7 @@ function buildPublicRealm(world){
  world.features.streetFurniture=count;return count;
 }
 
-return {ARCHITECTURE_DETAIL_RANGE,facadeWindows,pavedApron,addArchitecturalDetail,buildPublicRealm};
+return {ARCHITECTURE_DETAIL_RANGE,traceWindowRoom,facadeWindows,pavedApron,addArchitecturalDetail,buildPublicRealm};
 })();
 // ---- src/settlements.js ----
 const __m_src_settlements_js = (() => {

@@ -7,6 +7,13 @@ import {hex,transform,mat4Mul,add} from './math.js';
 const STONE=hex('#c4bfb0'),FRAME=hex('#4d5857'),METAL=hex('#354241'),TIMBER=hex('#7d6950');
 const terrain=(w,x,z)=>w.surfaceHeight?.(x,z)??w.height(x,z);
 export const ARCHITECTURE_DETAIL_RANGE=360;
+/** CPU reference for the shader room-box intersection, including zero ray axes. */
+export function traceWindowRoom(cell,direction){
+ if(!cell||cell.length!==2||!direction||direction.length!==3||![...cell,...direction].every(Number.isFinite)||cell.some(x=>x<0||x>1)||direction[2]>=0)throw new RangeError('Invalid interior ray');
+ const origin=[cell[0]*2-1,cell[1]*2-1,.999];
+ const times=direction.map((d,i)=>{const sign=d<0?-1:1;return (sign-origin[i])*sign/Math.max(Math.abs(d),.00001);});
+ const t=Math.min(...times);return origin.map((x,i)=>x+t*direction[i]);
+}
 export function facadeWindows(width,height,modern=false){
  if(![width,height].every(Number.isFinite)||width<=0||height<=0)return [];
  const margin=modern?.065:.19,windows=[];

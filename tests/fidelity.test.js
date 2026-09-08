@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {mipSizes,validateMaterialManifest,SURFACE_IDS,SurfaceLibrary} from '../src/materials.js';
 import {SHADOW_EXTENTS,stabilizedShadow,shadowCascadeCount} from '../src/shadow-cascades.js';
 import {decodeOctahedral,occlusionSamples,ContactOcclusion} from '../src/contact-occlusion.js';
-import {facadeWindows,pavedApron,addArchitecturalDetail,buildPublicRealm,ARCHITECTURE_DETAIL_RANGE} from '../src/urban-detail.js';
+import {facadeWindows,pavedApron,traceWindowRoom,addArchitecturalDetail,buildPublicRealm,ARCHITECTURE_DETAIL_RANGE} from '../src/urban-detail.js';
 import {SceneBuilder} from '../src/geometry.js';
 import {postOptions} from '../src/postprocess.js';
 import {norm,pointTransform,transform} from '../src/math.js';
@@ -94,4 +94,39 @@ test('architectural details are bounded instancing with no per-window geometry',
 });
 test('street furniture is generated only for built streets and clear rendered sites',()=>{
  const w=flat(),d={...district,roads:[{built:false},{built:true,axis:'z',a:[0,0],b:[0,30]}]};w.districts=[d];assert.equal(buildPublicRealm(w),1);assert.ok(w.builder.batches[0].data.every(Number.isFinite));w.network.nearest=()=>({});assert.equal(buildPublicRealm(w),0);
+});
+
+test('window-box rays stay finite and in bounds at normal incidence and nearly parallel axes',()=>{
+ for(const ray of [[0,0,-1],[-.000001,0,-1],[.000001,0,-1],[.5,.8,-.07],[-.7,-.2,-.1]])for(const cell of [[.3,.6],[.5,.5],[.01,.99]]){
+  const hit=traceWindowRoom(cell,ray);assert.ok(hit.every(x=>Number.isFinite(x)&&Math.abs(x)<=1.00001));assert.ok(hit.some(x=>Math.abs(Math.abs(x)-1)<1e-4));
+ }
+ assert.deepEqual(traceWindowRoom([.5,.5],[0,0,-1]),[0,0,-1]);assert.throws(()=>traceWindowRoom([2,0],[0,0,-1]));
+});
+test('shadow projection rejects zero sun and remains nonsingular directly overhead',()=>{
+ assert.throws(()=>stabilizedShadow([0,0,0],[0,0,0],72,1536));assert.throws(()=>stabilizedShadow([0,0,0],[1,2,3],Infinity,1536));
+ const m=stabilizedShadow([0,10,0],[0,1,0],72,1536);assert.ok(m.every(Number.isFinite));assert.ok(Math.abs(m[0])+Math.abs(m[1])+Math.abs(m[2])>0);
+});
+
+import {warpNaturalUV,SURFACE_WGSL,SURFACE_GLSL,SURFACE_APPLY_WGSL,SURFACE_APPLY_GLSL} from '../src/fidelity-shaders.js';
+test('natural-surface warp has correct analytic gradients and never folds',()=>{
+ for(let x=-120;x<=120;x+=7.4)for(let y=-70;y<=70;y+=6.7){
+  const p=[x,y],dx=warpNaturalUV(p,[1,0]).gradient,dy=warpNaturalUV(p,[0,1]).gradient;
+  assert.ok(dx[0]*dy[1]-dx[1]*dy[0]>.2);
+  const e=.0001,u=warpNaturalUV(p).uv;
+  for(const [d,step] of [[dx,[e,0]],[dy,[0,e]]]){
+   const v=warpNaturalUV([x+step[0],y+step[1]]).uv;
+   for(let i=0;i<2;i++)assert.ok(Math.abs((v[i]-u[i])/e-d[i])<.00002);
+  }
+ }
+ assert.throws(()=>warpNaturalUV([NaN,0]));
+ const a=warpNaturalUV([.31,.65]).uv,b=warpNaturalUV([1.31,.65]).uv;
+ assert.ok(Math.abs((b[0]-a[0])-1)>.05,'adjacent repeated tile no longer aligns');
+});
+test('both material backends transform natural-surface gradients and normal covectors',()=>{
+ for(const source of [SURFACE_WGSL,SURFACE_GLSL]){
+  assert.ok(source.includes('naturalGradient(x,xdx)'));
+  assert.ok(source.includes('naturalBump(sourceX,ax)'));
+ }
+ assert.ok(SURFACE_APPLY_WGSL.includes('biomeGrass'));
+ assert.ok(SURFACE_APPLY_GLSL.includes('biomeGrass'));
 });

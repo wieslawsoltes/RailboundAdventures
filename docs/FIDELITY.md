@@ -44,3 +44,9 @@ Run `npm test` for numerical, geometry, asset integrity, fallback, lifetime and 
 This release implements specific material, lighting and architecture systems. It does **not** establish a closed gap to commercial AAA art direction: botanical silhouettes, regional scene composition, character animation, interactive interiors, authored hero assets and long-distance terrain transitions still warrant further art work. There is no ray tracing, real-time GI, temporal AA/upscaling, recorded asset-library audio, arbitrary route-network replacement or licensed commercial train scan in this change. Review actual scene captures rather than inferring visual quality from passing tests.
 
 Technical background: https://google.github.io/filament/main/filament.html and https://www.w3.org/TR/WGSL/. Implementation is original; no external renderer source is bundled.
+
+## Natural-surface repetition and numerical edge cases
+
+Terrain, soil and rock use a smooth non-folding UV domain warp. Analytic Jacobians transform texture footprints, and the transpose Jacobian transforms sampled tangent-space perturbations. This breaks obvious repeated grid alignment without adding texture reads. Built surfaces (pavers, concrete and bark) retain their original metric projection. Regional grass palettes modulate the measured mean-linear color of the ground source; dry soil and cliff layers remain distinct. This is not stochastic texture synthesis.
+
+Window-box rays use nonzero, sign-consistent reciprocal axes, including grazing/axis-aligned views. Shadow framing rejects invalid or zero directions and selects a nonparallel up vector at zenith. Numerical regressions cover these cases.
