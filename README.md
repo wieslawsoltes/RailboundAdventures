@@ -1,5 +1,9 @@
 # Railbound Adventures
 
+## Living Worlds — denser nature and coherent neighbourhoods
+
+Version 3.2 adds branch-and-leaf forest canopies, three vegetation LODs, streamed grass/ferns/wildflowers, connected street graphs, buildable parcels, parks, regional skylines and metre-scaled facade materials. See [Living Worlds architecture and validation](docs/LIVING-WORLDS.md). New regions are available from **Worlds → Survey & enter**.
+
 ## Cinematic Journeys
 
 Version 3.1 adds linear HDR rendering, soft bloom, four display looks, an interactive photo studio, a route-based driving coach and saved journey telemetry. Terrain-grounded foundations and aligned viaduct spans address visible world defects; the Velocity 320 gains a smooth lofted nose with surface glazing. Scenic bird flocks, shoreline foam, northern night lighting and layered synthesized rail audio add atmosphere. Display, wildlife, sound and reduced-motion controls are optional.

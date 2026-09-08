@@ -1,3 +1,4 @@
+import {GroundCover} from './botany.js';
 import {postOptions} from './postprocess.js';
 import {JourneyDirector} from './journey.js';
 import {WorldLife} from './world-life.js';
@@ -21,7 +22,7 @@ export class RailboundApp {
   const mobile=matchMedia('(max-width: 760px)').matches;
   this.settings={quality:mobile?'medium':'high',resolution:mobile?.8:1,shadows:true,adaptive:true,safety:true,units:'km/h',volume:.36,timeScale:1,gamepad:true,cinematic:postOptions(),wildlife:true,ambience:true,coach:true,cameraMotion:!matchMedia('(prefers-reduced-motion: reduce)').matches};
   this.env={hour:16.4,weather:'clear',timeRate:4,exposure:1,electrified:true};
-  this.journey=new JourneyDirector();this.life=new WorldLife();this.camera=new CameraRig();this.audio=new RailAudio();this.rolling=new RollingStockRenderer();this.ui=new UI(this);
+  this.journey=new JourneyDirector();this.life=new WorldLife();this.groundCover=new GroundCover();this.camera=new CameraRig();this.audio=new RailAudio();this.rolling=new RollingStockRenderer();this.ui=new UI(this);
   this.renderer=new Renderer(document.getElementById('viewport'),message=>this.ui.toast(message,true));
   this.trains=[];this.player=null;this.world=null;this.mission=new Mission();this.keys=new Set();this.ready=false;this.renderEnabled=true;this.loadingWorld=false;this.paused=false;this.panelPause=false;this.autopilot=false;this.hidden=document.hidden;
   this.accumulator=0;this.simTime=0;this.uiClock=0;this.fps=0;this.fpsFrames=0;this.fpsClock=0;this.lastFrame=0;this.currentLimit=120;this.saveClock=0;this.adaptClock=0;this.gamepadButtons=[];this.userActive=false;this.lastSave=null;
@@ -55,7 +56,7 @@ export class RailboundApp {
    }
    await next.build((label,progress)=>this.ui.loading(label,progress));
    const previous=this.world;
-   this.world=next;this.player=player;this.trains=trains;this.life.reset(next);this.journey.reset(restored?.journey);
+   this.world=next;this.player=player;this.trains=trains;this.life.reset(next);this.groundCover.clear(this.renderer);this.journey.reset(restored?.journey);
    this.env=restored?{...restored.env}:{...this.env,hour:def.hour,weather:def.id==='nordic'?'snow':'clear'};
    this.env.electrified=next.editor.electrified;next.weather=this.env.weather;
    if(restored)this.settings={...this.settings,...restored.settings};
@@ -112,7 +113,7 @@ export class RailboundApp {
   if(this.hidden||!this.renderEnabled)return;
   try{
    const dynamic=this.rolling.update(this.trains,this.world,this.camera,stopped?0:dt,this.simTime,this.camera.mode);
-   const life=this.life.update(this.world,this.camera,this.simTime,this.settings.quality,this.settings.wildlife);this.renderer.render([...this.world.batches,...dynamic,...life],this.camera,this.world.def,this.env,this.player,this.simTime);
+   const life=this.life.update(this.world,this.camera,this.simTime,this.settings.quality,this.settings.wildlife);const cover=this.groundCover.update(this.world,this.camera,this.renderer,this.settings.quality);this.renderer.render([...this.world.batches,...dynamic,...life,...cover],this.camera,this.world.def,this.env,this.player,this.simTime);
    if(this.photoRequested){this.photoRequested=false;this.renderer.canvas.toBlob(blob=>{if(!blob)return this.ui.toast('Screenshot is unavailable in this browser.',true);downloadFile(`Railbound-${this.world.def.id}.png`,blob,'image/png');});}
   }catch(error){console.error(error);this.renderer.lost=true;this.ui.fatal(`Rendering stopped: ${error.message}`);}
  }

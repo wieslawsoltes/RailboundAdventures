@@ -1,3 +1,4 @@
+import {LEAF_WGSL,LEAF_GLSL,MATERIAL_WGSL,MATERIAL_GLSL} from './living-shaders.js';
 export const WGSL_COMMON = /* wgsl */`
 struct Frame {
  vp: mat4x4f, invVP: mat4x4f, lightVP: mat4x4f,
@@ -33,18 +34,20 @@ struct SkyOut {@builtin(position) position:vec4f,@location(0) ndc:vec2f};
 `;
 export const WGSL_VERTEX=/* wgsl */`
 struct Vin {@location(0) p:vec3f,@location(1) n:vec3f,@location(2) uv:vec2f,@location(3) m0:vec4f,@location(4) m1:vec4f,@location(5) m2:vec4f,@location(6) m3:vec4f,@location(7) color:vec4f,@location(8) props:vec4f};
-struct Vout {@builtin(position) position:vec4f,@location(0) world:vec3f,@location(1) normal:vec3f,@location(2) color:vec4f,@location(3) props:vec4f,@location(4) uv:vec2f,@location(5) light:vec4f};
+struct Vout {@builtin(position) position:vec4f,@location(0) world:vec3f,@location(1) normal:vec3f,@location(2) color:vec4f,@location(3) @interpolate(flat) props:vec4f,@location(4) uv:vec2f,@location(5) light:vec4f};
 @vertex fn vs(v:Vin)->Vout {let m=mat4x4f(v.m0,v.m1,v.m2,v.m3);var p=m*vec4f(v.p,1);var o:Vout;
  if(v.props.x>4.5&&v.props.x<5.5){p.x+=sin(u.cameraTime.w*1.3+p.z*.08)*.13*u.viewport.w*max(0.,v.p.y);}
- o.position=u.vp*p;o.world=p.xyz;o.normal=normalize(v.m0.xyz*v.n.x/max(.00001,dot(v.m0.xyz,v.m0.xyz))+v.m1.xyz*v.n.y/max(.00001,dot(v.m1.xyz,v.m1.xyz))+v.m2.xyz*v.n.z/max(.00001,dot(v.m2.xyz,v.m2.xyz)));o.color=v.color;o.props=v.props;o.uv=v.uv;o.light=u.lightVP*p;return o;}
+ if(v.props.x>10.5&&v.props.x<11.5){p=vec4f(canopyWind(p.xyz,v.m3.xyz,v.p,length(v.m1.xyz),v.uv),1.);}
+ o.position=u.vp*p;o.world=p.xyz;o.normal=normalize(v.m0.xyz*v.n.x/max(.00001,dot(v.m0.xyz,v.m0.xyz))+v.m1.xyz*v.n.y/max(.00001,dot(v.m1.xyz,v.m1.xyz))+v.m2.xyz*v.n.z/max(.00001,dot(v.m2.xyz,v.m2.xyz)));o.color=v.color;o.props=v.props;o.uv=v.uv;if(v.props.x>11.5&&v.props.x<12.5){o.uv=v.uv*vec2f(select(length(v.m0.xyz),length(v.m2.xyz),abs(v.n.x)>.5),length(v.m1.xyz));}o.light=u.lightVP*p;return o;}
 `;
-export const WGSL_MAIN = WGSL_COMMON+/* wgsl */`
+export const WGSL_MAIN = WGSL_COMMON+LEAF_WGSL+/* wgsl */`
 @group(0) @binding(1) var shadow: texture_depth_2d;
 @group(0) @binding(2) var shadowSampler: sampler_comparison;
 `+WGSL_VERTEX+/* wgsl */`
 fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.5)+vec2f(.5);if(any(uv<vec2f(.002))||any(uv>vec2f(.998))||p.z<0.||p.z>1.||u.headDir.w<.5){return 1.;}let bias=.00012+.00045*(1.-max(0.,dot(n,u.sunDay.xyz)));var s=0.;let size=vec2f(textureDimensions(shadow));for(var x=-1;x<=1;x++){for(var y=-1;y<=1;y++){s+=textureSampleCompareLevel(shadow,shadowSampler,uv+vec2f(f32(x),f32(y))/size,p.z-bias);}}return s/9.;}
 @fragment fn fs(v:Vout)->@location(0) vec4f {
  var n=normalize(v.normal);let view=normalize(u.cameraTime.xyz-v.world);var col=pow(v.color.rgb,vec3f(2.2));let kind=v.props.x;var rough=v.props.y;var metal=v.props.z;var emissive=v.props.w;
+`+MATERIAL_WGSL+/* wgsl */`
  if(kind>.5&&kind<1.5){
   let terrainNoise=fbm(v.world.xz*.0023);let moisture=clamp(v.uv.x,0.,1.);let drainage=clamp(v.uv.y,0.,1.);
   let blend=pow(abs(n),vec3f(4.));let weights=blend/max(dot(blend,vec3f(1.)),.001);
@@ -81,14 +84,20 @@ fn shadeShadow(lp:vec4f,n:vec3f)->f32 {let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.
  if(u.headPos.w>.01){let delta=v.world-u.headPos.xyz;let d=length(delta);let cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));color+=col*vec3f(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
  if(kind>8.5&&kind<9.5){let foam=.64+.36*noise(vec2f(v.world.x*1.2,v.world.y*.24+u.cameraTime.w*2.8));color=mix(color,vec3f(.64,.79,.82)*foam,.7);}
  if(kind>9.5&&kind<10.5){let crest=.65+.35*sin(v.world.x*.09+v.world.z*.12-u.cameraTime.w*1.2);color=mix(color,vec3f(.65,.79,.79),crest*.72);}
+ if(kind>10.5&&kind<11.5){color+=col*pow(max(0.,dot(-view,light)),3.)*.42*u.sunDay.w*visibility;}
+ if(glassAmount>0.){color=mix(color,atmosphere(reflect(-view,n),false)*.65,glassAmount*.45);}
  color+=col*emissive;
  let distance=length(v.world-u.cameraTime.xyz);let heightFog=exp(-max(v.world.y-u.env.w,0.)*.00085);let fog=1.-exp(-distance*u.fog.w*heightFog);color=mix(color,atmosphere(normalize(v.world-u.cameraTime.xyz),false),clamp(fog,0.,.99));
- return vec4f(aces(color),select(1.,v.color.a,kind>7.5));
+ return vec4f(aces(color),select(select(1.,v.color.a,kind>7.5),coverage,kind>10.5&&kind<11.5));
 }
 `;
-export const WGSL_SHADOW = WGSL_COMMON+/* wgsl */`
-struct Vin {@location(0) p:vec3f,@location(3) m0:vec4f,@location(4) m1:vec4f,@location(5) m2:vec4f,@location(6) m3:vec4f};
-@vertex fn vs(v:Vin)->@builtin(position) vec4f{return u.lightVP*mat4x4f(v.m0,v.m1,v.m2,v.m3)*vec4f(v.p,1);}
+export const WGSL_SHADOW=WGSL_COMMON+LEAF_WGSL+/* wgsl */`
+struct Vin {@location(0) p:vec3f,@location(2) uv:vec2f,@location(3) m0:vec4f,@location(4) m1:vec4f,@location(5) m2:vec4f,@location(6) m3:vec4f,@location(8) props:vec4f};
+struct ShadowOut {@builtin(position) position:vec4f,@location(0) uv:vec2f,@location(1) @interpolate(flat) props:vec4f};
+@vertex fn vs(v:Vin)->ShadowOut {var p=(mat4x4f(v.m0,v.m1,v.m2,v.m3)*vec4f(v.p,1)).xyz;
+ if(v.props.x>10.5&&v.props.x<11.5){p=canopyWind(p,v.m3.xyz,v.p,length(v.m1.xyz),v.uv);}
+ var o:ShadowOut;o.position=u.lightVP*vec4f(p,1);o.uv=v.uv;o.props=v.props;return o;}
+@fragment fn fs(v:ShadowOut){if(v.props.x>10.5&&v.props.x<11.5&&leafMask(v.uv,v.props.z)<.45){discard;}}
 `;
 /** GLSL ES 3.0 fallback deliberately shares the same material model and frame layout. */
 export const GLSL_COMMON=/* glsl */`
@@ -110,14 +119,15 @@ vec3 atmosphere(vec3 rd,bool clouds){float day=u.sunDay.w,h=clamp(rd.y*.8+.18,0.
 export const GLSL_SKY_VS=`#version 300 es
 precision highp float;out vec2 ndc;void main(){vec2 p=gl_VertexID==0?vec2(-1,-1):gl_VertexID==1?vec2(3,-1):vec2(-1,3);ndc=p;gl_Position=vec4(p,.99999,1);}`;
 export const GLSL_SKY_FS=`#version 300 es\n`+GLSL_COMMON+`in vec2 ndc;out vec4 outColor;void main(){vec4 w=u.invVP*vec4(ndc,1,1);vec3 rd=normalize(w.xyz/w.w-u.cameraTime.xyz);outColor=vec4(aces(atmosphere(rd,true)),1);}`;
-export const GLSL_MAIN_VS=`#version 300 es\n`+GLSL_COMMON+`
+export const GLSL_MAIN_VS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+`
 layout(location=0) in vec3 aPos;layout(location=1) in vec3 aNormal;layout(location=2) in vec2 aUV;layout(location=3) in mat4 model;layout(location=7) in vec4 tint;layout(location=8) in vec4 params;
-out vec3 world;out vec3 normal;out vec4 color;out vec4 props;out vec2 uv;out vec4 lightPos;
-void main(){vec4 p=model*vec4(aPos,1);if(params.x>4.5&&params.x<5.5)p.x+=sin(u.cameraTime.w*1.3+p.z*.08)*.13*u.viewport.w*max(0.,aPos.y);gl_Position=u.vp*p;world=p.xyz;normal=normalize(model[0].xyz*aNormal.x/max(.00001,dot(model[0].xyz,model[0].xyz))+model[1].xyz*aNormal.y/max(.00001,dot(model[1].xyz,model[1].xyz))+model[2].xyz*aNormal.z/max(.00001,dot(model[2].xyz,model[2].xyz)));color=tint;props=params;uv=aUV;lightPos=u.lightVP*p;}`;
-export const GLSL_MAIN_FS=`#version 300 es\n`+GLSL_COMMON+`
-precision highp sampler2DShadow;uniform sampler2DShadow shadowTex;in vec3 world;in vec3 normal;in vec4 color;in vec4 props;in vec2 uv;in vec4 lightPos;out vec4 outColor;
+out vec3 world;out vec3 normal;out vec4 color;flat out vec4 props;out vec2 uv;out vec4 lightPos;
+void main(){vec4 p=model*vec4(aPos,1);if(params.x>4.5&&params.x<5.5)p.x+=sin(u.cameraTime.w*1.3+p.z*.08)*.13*u.viewport.w*max(0.,aPos.y);if(params.x>10.5&&params.x<11.5)p=vec4(canopyWind(p.xyz,model[3].xyz,aPos,length(model[1].xyz),aUV),1.);gl_Position=u.vp*p;world=p.xyz;normal=normalize(model[0].xyz*aNormal.x/max(.00001,dot(model[0].xyz,model[0].xyz))+model[1].xyz*aNormal.y/max(.00001,dot(model[1].xyz,model[1].xyz))+model[2].xyz*aNormal.z/max(.00001,dot(model[2].xyz,model[2].xyz)));color=tint;props=params;uv=aUV;if(params.x>11.5&&params.x<12.5)uv*=vec2(abs(aNormal.x)>.5?length(model[2].xyz):length(model[0].xyz),length(model[1].xyz));lightPos=u.lightVP*p;}`;
+export const GLSL_MAIN_FS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+`
+precision highp sampler2DShadow;uniform sampler2DShadow shadowTex;in vec3 world;in vec3 normal;in vec4 color;flat in vec4 props;in vec2 uv;in vec4 lightPos;out vec4 outColor;
 float shadeShadow(vec4 lp,vec3 n){vec3 p=lp.xyz/lp.w;vec2 uv=p.xy*.5+.5;float z=p.z*.5+.5;if(any(lessThan(uv,vec2(.002)))||any(greaterThan(uv,vec2(.998)))||z<0.||z>1.||u.headDir.w<.5)return 1.;float bias=.00012+.00045*(1.-max(0.,dot(n,u.sunDay.xyz)));float s=0.;vec2 size=vec2(textureSize(shadowTex,0));for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++)s+=texture(shadowTex,vec3(uv+vec2(float(x),float(y))/size,z-bias));return s/9.;}
 void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=pow(color.rgb,vec3(2.2));float kind=props.x,rough=props.y,metal=props.z,emissive=props.w;
+`+MATERIAL_GLSL+/* glsl */`
  if(kind>.5&&kind<1.5){
   float terrainNoise=fbm(world.xz*.0023);float moisture=clamp(uv.x,0.,1.);float drainage=clamp(uv.y,0.,1.);
   vec3 blend=pow(abs(n),vec3(4.));vec3 weights=blend/max(dot(blend,vec3(1.)),.001);
@@ -148,6 +158,10 @@ void main(){vec3 n=normalize(normal),view=normalize(u.cameraTime.xyz-world),col=
  if(u.headPos.w>.01){vec3 delta=world-u.headPos.xyz;float d=length(delta),cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));result+=col*vec3(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
  if(kind>8.5&&kind<9.5){float foam=.64+.36*noise(vec2(world.x*1.2,world.y*.24+u.cameraTime.w*2.8));result=mix(result,vec3(.64,.79,.82)*foam,.7);}
  if(kind>9.5&&kind<10.5){float crest=.65+.35*sin(world.x*.09+world.z*.12-u.cameraTime.w*1.2);result=mix(result,vec3(.65,.79,.79),crest*.72);}
- result+=col*emissive;float distance=length(world-u.cameraTime.xyz),heightFog=exp(-max(world.y-u.env.w,0.)*.00085),f=1.-exp(-distance*u.fog.w*heightFog);result=mix(result,atmosphere(normalize(world-u.cameraTime.xyz),false),clamp(f,0.,.99));outColor=vec4(aces(result),kind>7.5?color.a:1.);}`;
-export const GLSL_SHADOW_VS=`#version 300 es\n`+GLSL_COMMON+`layout(location=0) in vec3 aPos;layout(location=3) in mat4 model;void main(){gl_Position=u.lightVP*model*vec4(aPos,1);}`;
-export const GLSL_SHADOW_FS=`#version 300 es\nprecision highp float;void main(){}`;
+ if(kind>10.5&&kind<11.5)result+=col*pow(max(0.,dot(-view,light)),3.)*.42*u.sunDay.w*visibility;
+ if(glassAmount>0.)result=mix(result,atmosphere(reflect(-view,n),false)*.65,glassAmount*.45);
+ result+=col*emissive;float distance=length(world-u.cameraTime.xyz),heightFog=exp(-max(world.y-u.env.w,0.)*.00085),f=1.-exp(-distance*u.fog.w*heightFog);result=mix(result,atmosphere(normalize(world-u.cameraTime.xyz),false),clamp(f,0.,.99));outColor=vec4(aces(result),kind>10.5&&kind<11.5?coverage:(kind>7.5?color.a:1.));}`;
+export const GLSL_SHADOW_VS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+`
+layout(location=0) in vec3 aPos;layout(location=2) in vec2 aUV;layout(location=3) in mat4 model;layout(location=8) in vec4 params;
+out vec2 uv;flat out vec4 props;void main(){vec3 p=(model*vec4(aPos,1)).xyz;if(params.x>10.5&&params.x<11.5)p=canopyWind(p,model[3].xyz,aPos,length(model[1].xyz),aUV);gl_Position=u.lightVP*vec4(p,1);uv=aUV;props=params;}`;
+export const GLSL_SHADOW_FS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+`in vec2 uv;flat in vec4 props;void main(){if(props.x>10.5&&props.x<11.5&&leafMask(uv,props.z)<.45)discard;}`;
