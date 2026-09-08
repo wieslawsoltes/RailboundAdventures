@@ -1,10 +1,11 @@
+import {AUTHORED_STATE} from './authored-assets.js';
 /** Living Worlds: deterministic, instanced botany with shared near/mid/far meshes.
- * Compound-leaf cards are analytically cut out in both colour and shadow passes.
- * No external textures, random frame-dependent placement or per-tree draw calls.
+ * Compound-leaf cards use same-origin authored cutouts with an analytic fallback.
+ * No runtime CDN, frame-dependent placement or per-tree draw calls.
  */
 import {Geometry,MeshBuilder,Batch,PRIMITIVES} from './geometry.js';
 import {rng,hash2,noise2,hex,clamp,smooth,add,sub,mul,norm,cross,transform,TAU} from './math.js';
-export const BOTANY_REVISION=1;
+export const BOTANY_REVISION=2;
 export const FOREST_CELL=320;
 export const SPECIES=['fir','oak','birch','cherry','pine'];
 const palettes={fir:['#315642','#466746'],pine:['#38583f','#557248'],oak:['#42633e','#687e46'],birch:['#62814a','#507040'],cherry:['#cfabb4','#b88899']};
@@ -18,9 +19,9 @@ function tube(b,a,c,r0,r1,sides=7){
  }
  for(let i=0;i<sides;i++){const n=start+i,m=n+sides+1;b.i.push(n,m,n+1,n+1,m,m+1);}
 }
-function card(b,p,scale,yaw,tilt,normal){
+function card(b,p,scale,yaw,tilt,normal,aspect=1){
  const right=[Math.cos(yaw),0,-Math.sin(yaw)],up=[Math.sin(yaw)*Math.sin(tilt),Math.cos(tilt),Math.cos(yaw)*Math.sin(tilt)];
- const a=mul(right,scale*.5),c=mul(up,scale*.5);
+ const a=mul(right,scale*.5*aspect),c=mul(up,scale*.5);
  b.quad(sub(sub(p,a),c),sub(add(p,a),c),add(add(p,a),c),add(sub(p,a),c),normal);
 }
 export function treeArchetype(species='fir',variant=0,lod=0){
@@ -28,39 +29,58 @@ export function treeArchetype(species='fir',variant=0,lod=0){
  const key=`botany-${species}-${variant}-${lod}`;if(cached.has(key))return cached.get(key);
  const wood=new MeshBuilder(),leaf=new MeshBuilder(),r=rng(9271+SPECIES.indexOf(species)*301+variant*99);
  const conifer=species==='fir'||species==='pine',birch=species==='birch';
- const lean=(r()-.5)*.10,tip=[lean,1,(r()-.5)*.08];
- tube(wood,[0,0,0],tip,birch?.012:.021,.002,lod===0?8:5);
+ const lean=(r()-.5)*.13,tip=[lean,1,(r()-.5)*.11];
+ const trunkAt=y=>[lean*y*y,y,tip[2]*y*y];
+ const trunkSegments=lod===0?9:lod===1?5:3;
+ for(let i=0;i<trunkSegments;i++){
+  const a=i/trunkSegments,b=(i+1)/trunkSegments;
+  tube(wood,trunkAt(a),trunkAt(b),(birch?.012:.021)*Math.pow(1-a,.75)+.001,(birch?.012:.021)*Math.pow(1-b,.75)+.001,lod===0?9:5);
+ }
  const clusters=[];
  if(conifer){
-  const tiers=lod===0?12:lod===1?8:5;
+  const tiers=lod===0?13:lod===1?9:6;
   for(let i=0;i<tiers;i++){
-   const y=.22+i/tiers*.76,extent=(1-y)*.44+.025,branches=lod===2?4:6;
+   const y=.20+i/tiers*.76,extent=Math.pow(1-y,.87)*.42*(.84+r()*.25),branches=lod===2?4:5+((i+variant)%2);
    for(let j=0;j<branches;j++){
-    const a=j/branches*TAU+i*2.399+variant,root=[lean*y,y,tip[2]*y],end=add(root,[Math.cos(a)*extent,y>.85?0:-.045,Math.sin(a)*extent]);
-    if(lod<2)tube(wood,root,end,.004*(1-y)+.001,.001,5);
-    for(let k=0;k<(lod===0?5:2);k++){
-     const t=.30+k/(lod===0?6:3),p=add(root,mul(sub(end,root),t));
-     const width=extent*(lod===2?1.7:lod===1?1.05:.64);
-     clusters.push({p,scale:Math.max(.037,width),angle:a+Math.PI*.5,tilt:.7+(r()-.5)*.6});
+    const a=j/branches*TAU+i*2.399+variant+(r()-.5)*.3,root=trunkAt(y);
+    const middle=add(root,[Math.cos(a)*extent*.52,-.035,Math.sin(a)*extent*.52]);
+    const end=add(root,[Math.cos(a)*extent,-.065+(y>.8?.07:0),Math.sin(a)*extent]);
+    if(lod<2){tube(wood,root,middle,.005*(1-y)+.0008,.002,5);tube(wood,middle,end,.002,.0005,5);}
+    const count=lod===0?6:lod===1?3:2;
+    for(let k=0;k<count;k++){
+     const t=.25+k/count*.74,p=add(root,mul(sub(end,root),t));
+     const size=Math.max(.047,extent*(lod===0?.57:lod===1?.86:1.4)*(1-t*.3));
+     if(lod<2){
+      // Secondary twigs diverge from a continuous branch, not an isolated leaf ball.
+      const angle=a+(k%2?-.63:.63),q=add(p,[Math.cos(angle)*size*.48,.012,Math.sin(angle)*size*.48]);
+      if(lod===0)tube(wood,p,q,.001,.00035,4);
+      clusters.push({p:add(p,mul(sub(q,p),.56)),scale:size,angle:Math.PI*.5-angle,tilt:1.38+(r()-.5)*.5});
+      if(lod===0)clusters.push({p:q,scale:size*.78,angle:Math.PI*.5-angle+.8,tilt:.75});
+     }else clusters.push({p,scale:size,angle:a+Math.PI*.5,tilt:1.1});
     }
    }
   }
  }else{
-  const branches=lod===0?11:lod===1?8:5;
+  const branches=lod===0?10:lod===1?8:6;
   for(let i=0;i<branches;i++){
-   const a=i*2.399+variant,y=.42+(i%4)*.085,extent=(birch?.18:.27)*(.7+r()*.5);
-   const root=[lean*y,y,tip[2]*y],end=[Math.cos(a)*extent+lean,y+.20+r()*.13,Math.sin(a)*extent];
-   if(lod<2)tube(wood,root,end,.008,.002,lod===0?7:5);
-   const leaves=lod===0?56:lod===1?8:4;
-   for(let k=0;k<leaves;k++){
-    const theta=r()*TAU,v=r()*2-1,rad=Math.pow(r(),.4)*(birch?.12:.17);
-    const p=add(end,[Math.cos(theta)*Math.sqrt(1-v*v)*rad,v*rad*.8,Math.sin(theta)*Math.sqrt(1-v*v)*rad]);
-    const size=lod===0?.036+r()*.026:lod===1?.15:.23;
-    clusters.push({p,scale:size,angle:r()*TAU,tilt:(r()-.5)*2.5});
+   const a=i*2.399+variant,y=.38+(i%5)*.075,extent=(birch?.18:.29)*(.73+r()*.46);
+   const root=trunkAt(y),fork=add(root,[Math.cos(a)*extent*.50,.12,Math.sin(a)*extent*.50]);
+   if(lod<2)tube(wood,root,fork,.008*(1-y)+.002,.003,lod===0?7:5);
+   const forks=lod===0?4:lod===1?3:2;
+   for(let j=0;j<forks;j++){
+    const az=a+(j-(forks-1)*.5)*.55,end=add(fork,[Math.cos(az)*extent*.52,.09+r()*.11,Math.sin(az)*extent*.52]);
+    if(lod<2)tube(wood,fork,end,.003,.0007,5);
+    const leaves=lod===0?17:lod===1?5:3;
+    for(let k=0;k<leaves;k++){
+     const theta=r()*TAU,v=r()*2-1,rad=Math.pow(r(),.45)*(birch?.085:.12);
+     const p=add(end,[Math.cos(theta)*Math.sqrt(1-v*v)*rad,v*rad*.75,Math.sin(theta)*Math.sqrt(1-v*v)*rad]);
+     const size=lod===0?.039+r()*.022:lod===1?.105:.18;
+     clusters.push({p,scale:size,angle:r()*TAU,tilt:(r()-.5)*2.5});
+    }
    }
   }
  }
- for(const c of clusters){const n=norm([c.p[0]*2,c.p[1]-.42,c.p[2]*2]);card(leaf,c.p,c.scale,c.angle,c.tilt,n);}
+ for(const c of clusters){const n=norm([c.p[0]*2,c.p[1]-.38,c.p[2]*2]);card(leaf,c.p,c.scale,c.angle,c.tilt,n,conifer&&lod<2?.57:1);}
  const result={wood:wood.geometry(),leaf:leaf.geometry(),leafCards:clusters.length,species,variant,lod};
  PRIMITIVES[key+'-wood']=result.wood;PRIMITIVES[key+'-leaf']=result.leaf;cached.set(key,result);return result;
 }
@@ -82,7 +102,8 @@ export class ForestBuilder {
      batch.lodNear=lod===0?280:lod===1?1300:0;batch.lodFar=lod===0?0:lod===1?280:1300;
      batch.cutout=role==='leaf';batch.detailClass='forest';this.cells.set(key,batch);this.builder.batches.push(batch);}
     batch.radius=Math.max(batch.radius,Math.hypot(p[0]-batch.center[0],p[1]+height*.5-batch.center[1],p[2]-batch.center[2])+height*.65);
-    batch.add(matrix,role==='leaf'?color:wood,role==='leaf'?[11,.86,species==='fir'||species==='pine'?1:0,variation]:[15,.94,0,0]);
+    const authored=role==='leaf'&&lod<2&&AUTHORED_STATE.ready&&(species==='fir'||species==='pine');
+    batch.add(matrix,authored?[.90,.96,.88,1]:role==='leaf'?color:wood,authored?[18,.9,3,0]:role==='leaf'?[11,.86,species==='fir'||species==='pine'?1:0,variation]:[15,.94,0,0]);
    }
   }
   this.treeCount++;

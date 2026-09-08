@@ -1,3 +1,4 @@
+import {TemporalResolve} from './temporal.js';
 import {ContactOcclusion} from './contact-occlusion.js';
 /** Linear-light scene -> quarter-resolution bloom -> filmic display transform.
  * Each pass has distinct sampled/attachment resources (no feedback hazards).
@@ -14,7 +15,7 @@ export function postOptions(value={}) {
  const v=value&&typeof value==='object'?value:{};
  const finite=(x,lo,hi,d)=>Number.isFinite(x)?clamp(x,lo,hi):d;
  return {look:Object.hasOwn(LOOKS,v.look)?v.look:'natural',bloom:finite(v.bloom,0,1,.24),
-  vignette:finite(v.vignette,0,.6,.15),grain:finite(v.grain,0,.15,0),occlusion:finite(v.occlusion,0,1,.85),surfaces:v.surfaces!==false,normalMapping:v.normalMapping!==false};
+  vignette:finite(v.vignette,0,.6,.15),grain:finite(v.grain,0,.15,0),occlusion:finite(v.occlusion,0,1,.85),surfaces:v.surfaces!==false,normalMapping:v.normalMapping!==false,temporal:v.temporal!==false};
 }
 export function targetSize(width,height,scale=1,max=4096) {
  const w=Math.max(1,Number.isFinite(width)?width:1),h=Math.max(1,Number.isFinite(height)?height:1);
@@ -60,7 +61,7 @@ fn blur(uv:vec2f,axis:vec2f)->vec4f {
 @fragment fn blurV(v:Out)->@location(0) vec4f {return blur(v.uv,vec2f(0,1));}
 fn aces(c:vec3f)->vec3f {let x=max(c,vec3f(0));return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),vec3f(0),vec3f(1));}
 @fragment fn composite(v:Out)->@location(0) vec4f {
- let g=geometryAt(v.uv);var c=sampleScene(v.uv)*(1.-g.w*(1.-visibilityAt(v.uv,g.z)))+textureSampleLevel(glow,linearSampler,v.uv,0.).rgb*u.look.x;
+ let g=geometryAt(v.uv);var c=sampleScene(v.uv)*(1.-clamp(select(g.w,-g.w-.1,g.w<0.),0.,.85)*(1.-visibilityAt(v.uv,g.z)))+textureSampleLevel(glow,linearSampler,v.uv,0.).rgb*u.look.x;
  c*=vec3f(1.+u.style.x*.25,1.,1.-u.style.x*.25);
  c=aces(c*u.screen.w);let lum=dot(c,vec3f(.2126,.7152,.0722));c=mix(vec3f(lum),c,u.look.y);
  c=pow(clamp(c,vec3f(0),vec3f(1)),vec3f(u.look.z));
@@ -84,13 +85,13 @@ const GL_FS={
  extract:GL_COMMON+`void main(){vec2 d=1./screen.xy;vec3 c=(sampleScene(uv+vec2(-1.5,-1.5)*d)+sampleScene(uv+vec2(1.5,-1.5)*d)+sampleScene(uv+vec2(-1.5,1.5)*d)+sampleScene(uv+vec2(1.5,1.5)*d))*.25;float l=max(max(c.r,c.g),c.b),knee=clamp(l-.65,0.,.7);outColor=vec4(c*max(l-1.,knee*knee/1.4)/max(l,.0001),1);}`,
  blurH:GL_COMMON+`void main(){vec2 d=vec2(1,0)/vec2(textureSize(scene,0));vec3 c=sampleScene(uv)*.227027+(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216+(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;outColor=vec4(c,1);}`,
  blurV:GL_COMMON+`void main(){vec2 d=vec2(0,1)/vec2(textureSize(scene,0));vec3 c=sampleScene(uv)*.227027+(sampleScene(uv+d*1.384615)+sampleScene(uv-d*1.384615))*.316216+(sampleScene(uv+d*3.230769)+sampleScene(uv-d*3.230769))*.070270;outColor=vec4(c,1);}`,
- composite:GL_COMMON+`void main(){vec4 g=geometryAt(uv);vec3 c=sampleScene(uv)*(1.-g.w*(1.-visibilityAt(uv,g.z)))+texture(glow,uv).rgb*look.x;c*=vec3(1.+style.x*.25,1.,1.-style.x*.25);c=style.z>.5?aces(c*screen.w):pow(max(c,vec3(0)),vec3(2.2));float lum=dot(c,vec3(.2126,.7152,.0722));c=mix(vec3(lum),c,look.y);c=pow(clamp(c,vec3(0),vec3(1)),vec3(look.z));vec2 q=uv*(1.-uv);c*=mix(1.,pow(clamp(q.x*q.y*16.,0.,1.),.28),look.w);c=pow(max(c,vec3(0)),vec3(1./2.2));float grain=fract(sin(dot(gl_FragCoord.xy+screen.z*17.,vec2(12.9898,78.233)))*43758.5453)-.5;outColor=vec4(clamp(c+grain*style.y,0.,1.),1);}`
+ composite:GL_COMMON+`void main(){vec4 g=geometryAt(uv);vec3 c=sampleScene(uv)*(1.-clamp(g.w<0.?-g.w-.1:g.w,0.,.85)*(1.-visibilityAt(uv,g.z)))+texture(glow,uv).rgb*look.x;c*=vec3(1.+style.x*.25,1.,1.-style.x*.25);c=style.z>.5?aces(c*screen.w):pow(max(c,vec3(0)),vec3(2.2));float lum=dot(c,vec3(.2126,.7152,.0722));c=mix(vec3(lum),c,look.y);c=pow(clamp(c,vec3(0),vec3(1)),vec3(look.z));vec2 q=uv*(1.-uv);c*=mix(1.,pow(clamp(q.x*q.y*16.,0.,1.),.28),look.w);c=pow(max(c,vec3(0)),vec3(1./2.2));float grain=fract(sin(dot(gl_FragCoord.xy+screen.z*17.,vec2(12.9898,78.233)))*43758.5453)-.5;outColor=vec4(clamp(c+grain*style.y,0.,1.),1);}`
 };
 
 export class PostProcessor {
- constructor(){this.options=postOptions();this.width=0;this.height=0;this.passCount=0;this.resources=[];this.frame=new Float32Array(12);this.occlusion=new ContactOcclusion();}
+ constructor(){this.options=postOptions();this.width=0;this.height=0;this.passCount=0;this.resources=[];this.frame=new Float32Array(12);this.occlusion=new ContactOcclusion();this.temporal=new TemporalResolve();}
  async initGPU(device,format){
-  this.device=device;this.hdr=true;this.format=format;await this.occlusion.initGPU(device);
+  this.device=device;this.hdr=true;this.format=format;await this.occlusion.initGPU(device);await this.temporal.initGPU(device);
   this.uniform=device.createBuffer({label:'Display transform',size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
   this.sampler=device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge'});
   this.layout=device.createBindGroupLayout({entries:[{binding:0,visibility:GPUShaderStage.FRAGMENT,buffer:{type:'uniform'}},{binding:1,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}},{binding:2,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}},{binding:3,visibility:GPUShaderStage.FRAGMENT,sampler:{type:'filtering'}},{binding:4,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}},{binding:5,visibility:GPUShaderStage.FRAGMENT,texture:{sampleType:'float'}}]});
@@ -104,7 +105,7 @@ export class PostProcessor {
   });
  }
  initGL(gl,compile){
-  this.gl=gl;this.hdr=!!gl.getExtension('EXT_color_buffer_float');this.colorFormat=this.hdr?gl.RGBA16F:gl.RGBA8;if(this.hdr)this.occlusion.initGL(gl,compile);
+  this.gl=gl;this.hdr=!!gl.getExtension('EXT_color_buffer_float');this.colorFormat=this.hdr?gl.RGBA16F:gl.RGBA8;if(this.hdr){this.occlusion.initGL(gl,compile);this.temporal.initGL(gl,compile);}
   this.programs={};this.locations={};this.vao=gl.createVertexArray();
   for(const [name,fs] of Object.entries(GL_FS)) {
    const p=this.programs[name]=compile(GL_VS,fs),loc=this.locations[name]={};gl.useProgram(p);
@@ -118,7 +119,7 @@ export class PostProcessor {
  releaseTargets(){
   if(this.device){for(const r of this.resources)r.destroy();}
   else if(this.gl)for(const [kind,r] of this.resources)this.gl[kind](r);
-  this.resources=[];this.groups=null;this.occlusion.release();
+  this.resources=[];this.groups=null;this.occlusion.release();this.temporal.release();this.groupCache=new Map();
  }
  resize(w,h){
   if(this.width===w&&this.height===h)return;
@@ -126,7 +127,7 @@ export class PostProcessor {
   if(this.device){
    const texture=(width,height)=>{const t=this.device.createTexture({size:[width,height],format:'rgba16float',usage:GPUTextureUsage.RENDER_ATTACHMENT|GPUTextureUsage.TEXTURE_BINDING});this.resources.push(t);return t;};
    this.scene=texture(w,h);this.geometry=texture(w,h);this.occlusion.resize(w,h,this.geometry);this.a=texture(this.bw,this.bh);this.b=texture(this.bw,this.bh);
-   const group=(scene,glow)=>this.device.createBindGroup({layout:this.layout,entries:[{binding:0,resource:{buffer:this.uniform}},{binding:1,resource:scene.createView()},{binding:2,resource:glow.createView()},{binding:3,resource:this.sampler},{binding:4,resource:this.occlusion.texture.createView()},{binding:5,resource:this.geometry.createView()}]});
+   const group=this.makeGroup=(scene,glow)=>this.device.createBindGroup({layout:this.layout,entries:[{binding:0,resource:{buffer:this.uniform}},{binding:1,resource:scene.createView()},{binding:2,resource:glow.createView()},{binding:3,resource:this.sampler},{binding:4,resource:this.occlusion.texture.createView()},{binding:5,resource:this.geometry.createView()}]});
    // Unused bindings also must never alias the current render attachment.
    this.groups={extract:group(this.scene,this.scene),blurH:group(this.a,this.scene),blurV:group(this.b,this.scene),composite:group(this.scene,this.a)};
   } else {
@@ -163,8 +164,12 @@ export class PostProcessor {
   this.frame.set([look.temperature,o.grain,this.hdr?1:0,this.occlusion.active?1:0],8);
  }
  encodeGPU(encoder,output,env,time,quality){
+  if(this.temporalRevision!==this.temporal.resourceRevision){this.groupCache.clear();this.temporalRevision=this.temporal.resourceRevision;}
+  const source=this.temporal.active?this.temporal.encodeGPU(encoder):this.scene;
+  if(source!==this.scene){if(!this.groupCache.has(source))this.groupCache.set(source,{extract:this.makeGroup(source,source),composite:this.makeGroup(source,this.a)});Object.assign(this.groups,this.groupCache.get(source));}
+  else{if(!this.groupCache.has(source))this.groupCache.set(source,{extract:this.makeGroup(source,source),composite:this.makeGroup(source,this.a)});Object.assign(this.groups,this.groupCache.get(source));}
   this.update(env,time,quality);this.device.queue.writeBuffer(this.uniform,0,this.frame);this.passCount=0;
-  const pass=(name,view)=>{const p=encoder.beginRenderPass({label:'Post '+name,colorAttachments:[{view,loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});p.setPipeline(this.pipelines[name]);p.setBindGroup(0,this.groups[name]);p.draw(3);p.end();this.passCount++;};
+  const pass=(name,view)=>{const p=encoder.beginRenderPass({label:'Post '+name,colorAttachments:[{view,loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});p.setPipeline(this.pipelines[name]);p.setBindGroup(0,group=this.groups[name]);p.draw(3);p.end();this.passCount++;};
   if(this.bloomActive){pass('extract',this.a.createView());pass('blurH',this.b.createView());pass('blurV',this.a.createView());}
   pass('composite',output);
  }
@@ -172,6 +177,7 @@ export class PostProcessor {
   this.update(env,time,quality);const g=this.gl;this.passCount=0;
   if(this.samples){g.bindFramebuffer(g.READ_FRAMEBUFFER,this.sceneFB);g.readBuffer(g.COLOR_ATTACHMENT0);g.bindFramebuffer(g.DRAW_FRAMEBUFFER,this.scene.fb);g.drawBuffers([g.COLOR_ATTACHMENT0]);g.blitFramebuffer(0,0,this.width,this.height,0,0,this.width,this.height,g.COLOR_BUFFER_BIT,g.NEAREST);
    if(this.hdr){g.readBuffer(g.COLOR_ATTACHMENT1);g.bindFramebuffer(g.DRAW_FRAMEBUFFER,this.geometry.fb);g.drawBuffers([g.COLOR_ATTACHMENT0]);g.blitFramebuffer(0,0,this.width,this.height,0,0,this.width,this.height,g.COLOR_BUFFER_BIT,g.NEAREST);g.readBuffer(g.COLOR_ATTACHMENT0);}}
+  const resolved=this.temporal.active?this.temporal.drawGL():this.scene.texture;
   this.occlusion.drawGL();
   g.disable(g.DEPTH_TEST);g.disable(g.BLEND);g.depthMask(false);g.bindVertexArray(this.vao);
   const pass=(name,target,source,glow,w,h)=>{
@@ -179,9 +185,9 @@ export class PostProcessor {
    g.uniform4fv(l.screen,this.frame.subarray(0,4));g.uniform4fv(l.look,this.frame.subarray(4,8));g.uniform4fv(l.style,this.frame.subarray(8,12));
    g.activeTexture(g.TEXTURE0);g.bindTexture(g.TEXTURE_2D,source);g.activeTexture(g.TEXTURE1);g.bindTexture(g.TEXTURE_2D,glow);g.activeTexture(g.TEXTURE2);g.bindTexture(g.TEXTURE_2D,this.geometry.texture);g.activeTexture(g.TEXTURE3);g.bindTexture(g.TEXTURE_2D,this.occlusion.texture||this.geometry.texture);g.drawArrays(g.TRIANGLES,0,3);this.passCount++;
   };
-  if(this.bloomActive){pass('extract',this.a.fb,this.scene.texture,this.scene.texture,this.bw,this.bh);pass('blurH',this.b.fb,this.a.texture,this.scene.texture,this.bw,this.bh);pass('blurV',this.a.fb,this.b.texture,this.scene.texture,this.bw,this.bh);}
-  pass('composite',null,this.scene.texture,this.a.texture,this.width,this.height);
+  if(this.bloomActive){pass('extract',this.a.fb,resolved,resolved,this.bw,this.bh);pass('blurH',this.b.fb,this.a.texture,this.scene.texture,this.bw,this.bh);pass('blurV',this.a.fb,this.b.texture,this.scene.texture,this.bw,this.bh);}
+  pass('composite',null,resolved,this.a.texture,this.width,this.height);
   g.activeTexture(g.TEXTURE0);g.bindVertexArray(null);g.depthMask(true);g.enable(g.DEPTH_TEST);
  }
- dispose(){this.releaseTargets();this.occlusion.dispose();this.uniform?.destroy?.();if(this.gl){for(const p of Object.values(this.programs))this.gl.deleteProgram(p);this.gl.deleteVertexArray(this.vao);}}
+ dispose(){this.releaseTargets();this.occlusion.dispose();this.temporal.dispose();this.uniform?.destroy?.();if(this.gl){for(const p of Object.values(this.programs))this.gl.deleteProgram(p);this.gl.deleteVertexArray(this.vao);}}
 }
