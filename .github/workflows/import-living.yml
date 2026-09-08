@@ -1,0 +1,66 @@
+name: Import Living Worlds implementation
+on:
+  push:
+    branches: [feat/living-worlds]
+    paths: [.github/workflows/import-living.yml]
+permissions:
+  contents: write
+concurrency:
+  group: import-living
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/living-worlds
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Materialize checksum-verified sources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,lzma,os,pathlib,urllib.request
+          chunks=['ad80194d071bc52dc42c3c808871a8476bd699d6','adfc44b5bfa56f059ca7e90a0ccd6b7d4aeecb90','24383d08549f80627cb07efd08f384d4aa259853']
+          compressed=bytearray()
+          for sha in chunks:
+              request=urllib.request.Request(f'https://api.github.com/repos/{os.environ["GITHUB_REPOSITORY"]}/git/blobs/{sha}',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=60) as response: blob=json.load(response)
+              data=base64.b64decode(blob['content'])
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+              compressed.extend(data)
+          payload=lzma.decompress(compressed)
+          assert hashlib.sha256(payload).hexdigest()=='273044b5f610e9861c23addd072e471a4eacbb3d10ee2f98123b81972792d922'
+          root=pathlib.Path.cwd().resolve()
+          for record in json.loads(payload):
+              path=root/record['path']
+              assert path.resolve().is_relative_to(root) and '.git' not in path.parts
+              if 'text' in record: text=record['text']
+              else:
+                  raw=path.read_bytes()
+                  assert hashlib.sha256(raw).hexdigest()==record['base'],'Changed base: '+record['path']
+                  text=raw.decode('utf-8')
+                  for start,end,replacement in reversed(record['edits']):
+                      assert 0<=start<=end<=len(text)
+                      text=text[:start]+replacement+text[end:]
+              data=text.encode('utf-8')
+              assert hashlib.sha256(data).hexdigest()==record['sha256'],'Target mismatch: '+record['path']
+              path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+              print('Verified',record['path'],len(data))
+          PY
+      - name: Run all simulation, rendering and scenery regressions
+        run: npm test
+      - name: Build and validate distribution
+        run: npm run build:pages
+      - name: Commit tested implementation and standalone distribution
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src styles tests tools docs sw.js package.json README.md dist
+          git diff --cached --check
+          git commit -m 'feat: Living Worlds dense botanical forests and parcel-based realistic settlements' -m 'Add shared branch and compound-leaf geometry, consistent wind and cutout shadows, instanced woodland LODs, bounded camera-local ground cover, connected terrain-conforming streets, zoned parcels, parks, metric procedural facades, roof and road materials, offline support and deterministic geometry/city regressions.'
+          git push origin HEAD:feat/living-worlds
