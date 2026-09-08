@@ -1,0 +1,10 @@
+Selected materials by ambientCG / Lennart Demes.
+Creative Commons CC0 1.0 Universal.
+https://docs.ambientcg.com/license/
+https://creativecommons.org/publicdomain/zero/1.0/
+
+See manifest.json for original asset pages, source package hashes and derived map hashes.
+Ground037, Ground048 and PavingStones036 are surface photogrammetry.
+Other selected materials are procedural or approximated; this pack is not entirely photoscanned.
+NormalGL maps are packed without color transfer; base color retains sRGB encoding.
+Tile sizes without published dimensions are artistic scale choices, not survey measurements.
