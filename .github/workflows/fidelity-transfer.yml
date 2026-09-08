@@ -4,31 +4,98 @@ on:
     branches: [feat/material-lighting-fidelity]
     paths: [.github/workflows/fidelity-transfer.yml]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  snapshot:
+  materialize:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
           ref: feat/material-lighting-fidelity
-      - name: Prepare licensed material library
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Apply checksum-verified implementation
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python -m pip install pillow==11.3.0
-          python tools/acquire_materials.py
-      - name: Commit only material assets
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, urllib.request
+          data=bytearray()
+          for sha in ['df0592070a55f88269fe084809552961bc51850b','df3c646332ff7e01e84cfed93a63e9d82b74ca36']:
+              request=urllib.request.Request(f'https://api.github.com/repos/{os.environ["GITHUB_REPOSITORY"]}/git/blobs/{sha}',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request,timeout=60) as response:
+                  chunk=base64.b64decode(json.load(response)['content'])
+              assert hashlib.sha1(b'blob '+str(len(chunk)).encode()+b'\0'+chunk).hexdigest()==sha
+              data.extend(chunk)
+          payload=lzma.decompress(data)
+          assert hashlib.sha256(payload).hexdigest()=='7735742ae00771fd5978014d6fc7e282f7da54281e9c3c0485baf624d7502add'
+          root=pathlib.Path.cwd().resolve()
+          for record in json.loads(payload):
+              path=root/record['path']
+              assert path.resolve().is_relative_to(root) and not set(path.parts)&{'.git','.github'}
+              if 'text' in record:
+                  text=record['text']
+              else:
+                  raw=path.read_bytes()
+                  assert hashlib.sha256(raw).hexdigest()==record['base'],record['path']
+                  text=raw.decode()
+                  for start,end,replacement in reversed(record['edits']):
+                      assert 0<=start<=end<=len(text)
+                      text=text[:start]+replacement+text[end:]
+              target=text.encode()
+              assert hashlib.sha256(target).hexdigest()==record['sha256'],record['path']
+              path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_bytes(target)
+              print('Verified',record['path'],len(target))
+          PY
+      - name: Test and rebuild
+        run: |
+          npm test
+          npm run build:pages
+      - name: Commit tested source and distribution
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add assets/materials
+          git add src tools package.json sw.js dist
           git diff --cached --check
-          git commit -m 'assets: bundle eight CC0 surface materials and source hashes'
+          git commit -m 'feat: texture-backed materials, stabilized shadows and ambient contact shading'
           git push origin HEAD:feat/material-lighting-fidelity
-      - name: Archive prepared source
-        run: git archive --format=tar.gz --output=fidelity-assets.tar.gz HEAD
-      - uses: actions/upload-artifact@v4
+  smoke:
+    needs: materialize
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [webgpu, webgl]
+    steps:
+      - uses: actions/checkout@v6
         with:
-          name: fidelity-assets
-          path: fidelity-assets.tar.gz
+          ref: feat/material-lighting-fidelity
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install browser
+        run: |
+          python -m pip install playwright==1.62.0 pillow==11.3.0
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers
+      - name: Check shader and pipeline execution
+        env:
+          BACKEND: ${{ matrix.backend }}
+          SMOKE: '1'
+          PAGE_URL: http://127.0.0.1:8000/
+        run: |
+          python -m http.server 8000 --bind 127.0.0.1 > /tmp/fidelity-http.log 2>&1 &
+          xvfb-run -a python -u tools/verify_fidelity.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fidelity-smoke-${{ matrix.backend }}
+          path: fidelity-results/
           retention-days: 7
