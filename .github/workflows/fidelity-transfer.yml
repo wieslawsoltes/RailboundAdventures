@@ -25,14 +25,14 @@ jobs:
           python3 - <<'PY'
           import base64, hashlib, json, lzma, os, pathlib, urllib.request
           data=bytearray()
-          for sha in ['df0592070a55f88269fe084809552961bc51850b','df3c646332ff7e01e84cfed93a63e9d82b74ca36']:
+          for sha in ['ab1856f05a6eec65d9b42e1f1f09bda2d6589f8c']:
               request=urllib.request.Request(f'https://api.github.com/repos/{os.environ["GITHUB_REPOSITORY"]}/git/blobs/{sha}',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
               with urllib.request.urlopen(request,timeout=60) as response:
                   chunk=base64.b64decode(json.load(response)['content'])
               assert hashlib.sha1(b'blob '+str(len(chunk)).encode()+b'\0'+chunk).hexdigest()==sha
               data.extend(chunk)
           payload=lzma.decompress(data)
-          assert hashlib.sha256(payload).hexdigest()=='7735742ae00771fd5978014d6fc7e282f7da54281e9c3c0485baf624d7502add'
+          assert hashlib.sha256(payload).hexdigest()=='9b110fbf7b8ce5c42ad4d0302b5df2857c4df19812f00aa59b0da5f45e78c3fe'
           root=pathlib.Path.cwd().resolve()
           for record in json.loads(payload):
               path=root/record['path']
@@ -60,14 +60,14 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src tools package.json sw.js dist
+          git add src tools tests docs README.md package.json sw.js dist
           git diff --cached --check
-          git commit -m 'feat: texture-backed materials, stabilized shadows and ambient contact shading'
+          git commit -m 'feat: detailed public realm and verified texture-lighting integration'
           git push origin HEAD:feat/material-lighting-fidelity
-  smoke:
+  browser:
     needs: materialize
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -85,17 +85,19 @@ jobs:
           python -m pip install playwright==1.62.0 pillow==11.3.0
           python -m playwright install --with-deps chromium
           sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers
-      - name: Check shader and pipeline execution
+      - name: Compare surfaces, lighting, architecture and compatibility
         env:
           BACKEND: ${{ matrix.backend }}
-          SMOKE: '1'
-          PAGE_URL: http://127.0.0.1:8000/
+          PAGE_URL: http://127.0.0.1:8000/RailboundAdventures/
         run: |
-          python -m http.server 8000 --bind 127.0.0.1 > /tmp/fidelity-http.log 2>&1 &
+          python tools/build_pages.py
+          mkdir -p /tmp/railbound-preview/RailboundAdventures
+          cp -a _site/. /tmp/railbound-preview/RailboundAdventures/
+          python -m http.server 8000 --bind 127.0.0.1 --directory /tmp/railbound-preview > /tmp/fidelity-http.log 2>&1 &
           xvfb-run -a python -u tools/verify_fidelity.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fidelity-smoke-${{ matrix.backend }}
+          name: fidelity-first-${{ matrix.backend }}
           path: fidelity-results/
           retention-days: 7
