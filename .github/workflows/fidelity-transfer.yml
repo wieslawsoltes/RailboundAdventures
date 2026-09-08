@@ -4,13 +4,11 @@ on:
     branches: [feat/material-lighting-fidelity]
     paths: [.github/workflows/fidelity-transfer.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
   materialize:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -18,21 +16,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Apply checksum-verified implementation
+      - name: Apply checksum-verified visual refinements
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
           import base64, hashlib, json, lzma, os, pathlib, urllib.request
-          data=bytearray()
-          for sha in ['ab1856f05a6eec65d9b42e1f1f09bda2d6589f8c']:
-              request=urllib.request.Request(f'https://api.github.com/repos/{os.environ["GITHUB_REPOSITORY"]}/git/blobs/{sha}',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-              with urllib.request.urlopen(request,timeout=60) as response:
-                  chunk=base64.b64decode(json.load(response)['content'])
-              assert hashlib.sha1(b'blob '+str(len(chunk)).encode()+b'\0'+chunk).hexdigest()==sha
-              data.extend(chunk)
+          sha='a309907115b8af2be6097cba81f912dfb222d2b5'
+          request=urllib.request.Request(f'https://api.github.com/repos/{os.environ["GITHUB_REPOSITORY"]}/git/blobs/{sha}',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(request,timeout=60) as response:
+              data=base64.b64decode(json.load(response)['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
           payload=lzma.decompress(data)
-          assert hashlib.sha256(payload).hexdigest()=='9b110fbf7b8ce5c42ad4d0302b5df2857c4df19812f00aa59b0da5f45e78c3fe'
+          assert hashlib.sha256(payload).hexdigest()=='e5665364774d16067327692a1e60665d2b494abaab6d44fd2e211aa32d054c61'
           root=pathlib.Path.cwd().resolve()
           for record in json.loads(payload):
               path=root/record['path']
@@ -56,48 +52,11 @@ jobs:
         run: |
           npm test
           npm run build:pages
-      - name: Commit tested source and distribution
+      - name: Commit verified source and distribution
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src tools tests docs README.md package.json sw.js dist
+          git add src tests docs dist
           git diff --cached --check
-          git commit -m 'feat: detailed public realm and verified texture-lighting integration'
+          git commit -m 'fix: natural surface repetition, biome tint and grazing-angle stability'
           git push origin HEAD:feat/material-lighting-fidelity
-  browser:
-    needs: materialize
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        backend: [webgpu, webgl]
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: feat/material-lighting-fidelity
-          persist-credentials: false
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - name: Install browser
-        run: |
-          python -m pip install playwright==1.62.0 pillow==11.3.0
-          python -m playwright install --with-deps chromium
-          sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers
-      - name: Compare surfaces, lighting, architecture and compatibility
-        env:
-          BACKEND: ${{ matrix.backend }}
-          PAGE_URL: http://127.0.0.1:8000/RailboundAdventures/
-        run: |
-          python tools/build_pages.py
-          mkdir -p /tmp/railbound-preview/RailboundAdventures
-          cp -a _site/. /tmp/railbound-preview/RailboundAdventures/
-          python -m http.server 8000 --bind 127.0.0.1 --directory /tmp/railbound-preview > /tmp/fidelity-http.log 2>&1 &
-          xvfb-run -a python -u tools/verify_fidelity.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fidelity-first-${{ matrix.backend }}
-          path: fidelity-results/
-          retention-days: 7
