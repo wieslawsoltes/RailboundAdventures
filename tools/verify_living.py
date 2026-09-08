@@ -27,8 +27,12 @@ def render(page,name,cover=True):
  let error=null;if(r.device){await r.device.queue.onSubmittedWorkDone();error=(await r.device.popErrorScope())?.message||null;}else error=r.gl.getError();
  return {error,calls:r.drawCalls,triangles:r.triangles,cover:a.groundCover.visibleInstances,tiles:a.groundCover.tiles.size,lost:r.lost};}''',cover)
  check(name+' GPU submission',not stats['error'] and not stats['lost'] and stats['calls']>10,stats)
- png=page.locator('#viewport').screenshot(timeout=120000);image=Image.open(io.BytesIO(png)).convert('RGB')
- check(name+' visible scene',max(ImageStat.Stat(image).stddev)>5)
+ # DOM controls must not make an empty GPU canvas pass the image test.
+ hidden=page.add_style_tag(content='body > :not(#viewport) {visibility:hidden!important}')
+ try:png=page.locator('#viewport').screenshot(timeout=120000)
+ finally:hidden.evaluate('(node)=>node.remove()')
+ image=Image.open(io.BytesIO(png)).convert('RGB')
+ check(name+' visible scene without interface',max(ImageStat.Stat(image).stddev)>5)
  (OUT/(name+'-scene.png')).write_bytes(png);page.screenshot(path=str(OUT/(name+'.png')),timeout=120000);return image,stats
 with sync_playwright() as p:
  args=['--no-sandbox','--use-angle=swiftshader','--enable-unsafe-swiftshader','--disable-gpu-watchdog']
