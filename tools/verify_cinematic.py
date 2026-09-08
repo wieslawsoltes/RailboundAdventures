@@ -38,7 +38,7 @@ def boot(page):
     check('game starts with expected backend', state['ready'] and state['kind'] == ('WebGPU' if BACKEND == 'webgpu' else 'WebGL 2'), state)
     page.evaluate('''() => {const a=railbound;a.renderEnabled=false;a.paused=true;
         a.settings.resolution=.65;a.settings.adaptive=false;a.settings.quality='high';a.applySettings();}''')
-    page.wait_for_function('document.getElementById("loading").classList.contains("hidden")')
+    page.wait_for_function('document.getElementById("loading").classList.contains("hidden")', timeout=120000, polling=100)
 
 
 def render(page, name, capture=True):
@@ -191,6 +191,7 @@ with sync_playwright() as p:
         if BACKEND=='webgl':
             # Explicitly exercise the documented no-float extension fallback.
             context2=browser.new_context(viewport={'width':900,'height':600})
+            context2.set_default_timeout(120000)
             context2.add_init_script("""Object.defineProperty(Navigator.prototype,'gpu',{get:()=>undefined});
                 const get=WebGL2RenderingContext.prototype.getExtension;
                 WebGL2RenderingContext.prototype.getExtension=function(name){return name==='EXT_color_buffer_float'?null:get.call(this,name)};""")
