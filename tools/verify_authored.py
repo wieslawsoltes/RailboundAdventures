@@ -120,11 +120,15 @@ with sync_playwright() as p:
   s,_=render(page,'low-tier',False,True);check('low tier retains spatial rendering without histories',not s['temporal'] and s['history']==0,s)
   page.evaluate("railbound.renderer.settings.quality='high';railbound.renderer.settings.shadows=true")
   page.evaluate("railbound.loadWorld('pine')")
-  view=page.evaluate("""()=>{const a=railbound,w=a.world,p=w.authoredSamples.find(s=>s.name.startsWith('tree_stump'))||w.authoredSamples[0];
+  view=page.evaluate("""async()=>{const a=railbound,w=a.world,{stationLandUse}=await import('./src/land-use.js');
+   const samples=w.authoredSamples.filter(s=>!stationLandUse(w,s.position[0],s.position[2],24));
+   const p=samples.find(s=>s.name.startsWith('tree_stump'))||samples[0];
    if(!p)throw new Error('Missing natural prop ensemble');const q=p.position;
    a.camera.setMode('free');a.camera.position=[q[0]+8,Math.max(q[1]+3.4,w.surfaceHeight(q[0]+8,q[2]+10)+2),q[2]+10];a.camera.target=[q[0],q[1]+2,q[2]];a.camera.fov=60;
-   return {props:w.features.authoredProps,stations:w.features.authoredStations,canopies:w.features.stationCanopies};}""")
+   let intrusions=0;for(const b of w.batches)if(b.detailClass==='authored'&&b.lodNear===75)for(let i=0;i<b.count;i++)if(stationLandUse(w,b.data[i*24+12],b.data[i*24+14]))intrusions++;
+   return {props:w.features.authoredProps,stations:w.features.authoredStations,canopies:w.features.stationCanopies,intrusions};}""")
   render(page,'pine-authored-nature',True);check('pine props and station kit populated',view['props']>20 and view['stations']>0,view)
+  check('generated art respects every station footprint',view['intrusions']==0,view)
   page.evaluate("railbound.loadWorld('metro')")
   page.evaluate("""()=>{const a=railbound,w=a.world,s=w.stations[0],p=w.network.edges.get(s.edge).at(s.s-92),q=w.railCross(p,17,0);
    a.camera.setMode('free');a.camera.position=[q[0]-p.right[0]*26+p.f[0]*30,q[1]+12,q[2]-p.right[2]*26+p.f[2]*30];a.camera.target=[q[0],q[1]+4,q[2]];a.camera.fov=55;a.env.hour=16.5;}""")

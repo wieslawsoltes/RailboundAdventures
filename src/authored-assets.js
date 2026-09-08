@@ -1,3 +1,4 @@
+import {stationLandUse} from './land-use.js';
 /** Curated CC0 art: immutable geometry and independently owned GPU texture arrays.
  * A failed art download never prevents driving: the procedural scene remains usable.
  */
@@ -66,7 +67,7 @@ export class AuthoredLibrary extends SurfaceLibrary {
 }
 export function authoredSite(world,x,z,radius=1){
  if(!Number.isFinite(x+z+radius)||radius<=0)return null;
- const f=world.terrain;if(!f)return null;
+ const f=world.terrain;if(!f||stationLandUse(world,x,z,radius))return null;
  const centre=world.surfaceHeight(x,z),low=world.def.water+(.18);
  if(!Number.isFinite(centre)||centre<low)return null;
  const rail=world.network.nearest(x,z,60);if(rail&&rail.distance<radius+4.2)return null;

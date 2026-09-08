@@ -1,3 +1,4 @@
+import {stationLandUse} from './land-use.js';
 import {AUTHORED_STATE} from './authored-assets.js';
 /** Living Worlds: deterministic, instanced botany with shared near/mid/far meshes.
  * Compound-leaf cards use same-origin authored cutouts with an analytic fallback.
@@ -116,6 +117,7 @@ export function addLivingTree(world,p,height,variation=.5,species=null){
  world.forest.add(p,height,species,variation);
 }
 export function urbanLandUse(world,x,z){
+ if(stationLandUse(world,x,z,1))return true;
  for(const d of world.districts||[]){const dx=x-d.origin[0],dz=z-d.origin[2],lx=dx*d.right[0]+dz*d.right[2],lz=dx*d.forward[0]+dz*d.forward[2];
   if(lx>d.minX-8&&lx<d.maxX+8&&lz>d.minZ-8&&lz<d.maxZ+8)return true;}
  return false;
@@ -157,7 +159,6 @@ export async function buildLivingForest(world,onProgress=()=>{}){
   if(++count%4000===0)await new Promise(resolve=>setTimeout(resolve,0));
  }
  world.features.forestCandidates=sites.offered;world.features.trees+=count;world.features.forestTrees=count;world.features.botanyRevision=BOTANY_REVISION;
- // Fallen timber, mossy outcrops and patches of young woodland follow the corridor.
  let understory=0,edgeIndex=0;
  for(const edge of world.network.edges.values()){
  const corridor=edgeIndex++;
@@ -204,7 +205,6 @@ export class GroundCover {
   const batches=new Map(),cell=40,step=quality==='low'?5:quality==='medium'?3.8:2.8;let instances=0;
   for(let j=0;j<14;j++)for(let i=0;i<14;i++){
    const r=rng((Math.imul(tx*14+i,73856093)^Math.imul(tz*14+j,19349663)^world.seed)>>>0);
-   // Fixed 14x14 candidate grid; nested hash threshold avoids reshuffling grass.
    const px=tx*cell+(i+.15+r()*.7)*cell/14,pz=tz*cell+(j+.15+r()*.7)*cell/14,accept=r();
    if(accept>(2.8/step)**2*Math.min(1,world.terrain?.options?.vegetation??1)||urbanLandUse(world,px,pz)||world.network.nearest(px,pz,7.2))continue;
    const raw=world.baseHeight(px,pz),f=world.terrain;if(raw<world.def.water+.5||raw>world.def.snowLine||!f)continue;

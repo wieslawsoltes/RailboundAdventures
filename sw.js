@@ -34,6 +34,7 @@ const FILES = [
   'assets/materials/Rock030-albedo.jpg',
   'assets/materials/Rock030-surface.png',
   'assets/materials/manifest.json',
+  'src/land-use.js',
   'src/authored-assets.js',
   'src/authored-shaders.js',
   'src/station-art.js',
@@ -63,7 +64,6 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== BASE.origin || !url.pathname.startsWith(BASE.pathname)) return;
-  // Network-first keeps source deployments current. The installed shell works offline.
   event.respondWith(fetch(request).then(response => {
     if (response.ok && FILES.includes(url.href)) {
       const copy = response.clone();
