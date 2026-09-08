@@ -17,7 +17,7 @@ def boot(page):
  page.wait_for_function('window.railbound?.ready || !document.getElementById("fatal").classList.contains("hidden")',timeout=240000)
  state=page.evaluate('({ready:railbound.ready,kind:railbound.renderer.kind,error:document.getElementById("fatal-message").textContent})')
  check('starts with requested renderer',state['ready'] and state['kind']==('WebGPU' if BACKEND=='webgpu' else 'WebGL 2'),state)
- page.evaluate("railbound.renderEnabled=false;railbound.paused=true;railbound.settings.adaptive=false;railbound.renderer.settings.resolution=.65")
+ page.evaluate("railbound.renderEnabled=false;railbound.paused=true;railbound.settings.adaptive=false;railbound.renderer.settings.resolution=1")
 def render(page,name,cover=True):
  stats=page.evaluate('''async (cover)=>{const a=railbound,r=a.renderer;a.camera.update(a.player,a.world,1/60,new Set());
  const stock=a.rolling.update(a.trains,a.world,a.camera,0,a.simTime,a.camera.mode);let ground=[];
