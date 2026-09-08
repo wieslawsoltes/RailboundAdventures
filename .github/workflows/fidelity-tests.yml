@@ -1,0 +1,56 @@
+name: Material fidelity candidate verification
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: fidelity-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [webgpu, webgl]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify simulation, geometry, asset hashes and resource lifetimes
+        run: npm test
+      - name: Build offline candidate with project-relative assets
+        run: |
+          npm run build:pages
+          mkdir -p /tmp/railbound-preview/RailboundAdventures
+          cp -a _site/. /tmp/railbound-preview/RailboundAdventures/
+          python -m http.server 8000 --bind 127.0.0.1 --directory /tmp/railbound-preview > /tmp/fidelity-http.log 2>&1 &
+      - name: Install browser and software GPU
+        run: |
+          python -m pip install playwright==1.62.0 pillow==11.3.0
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers
+      - name: Verify fidelity, comparisons, offline maps and standalone game
+        env:
+          PAGE_URL: http://127.0.0.1:8000/RailboundAdventures/
+          BACKEND: ${{ matrix.backend }}
+        run: xvfb-run -a python -u tools/verify_fidelity.py
+      - name: Preserve scene captures and machine-readable reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fidelity-${{ matrix.backend }}
+          path: |
+            fidelity-results/
+            dist/index.html
+          if-no-files-found: error
+          retention-days: 14
