@@ -70,10 +70,19 @@ with sync_playwright() as p:
   if os.environ.get('SMOKE')=='1':
    check('no startup errors',not report['errors'],report['errors'])
   else:
+   page.evaluate('railbound.renderer.settings.shadows=false');render(page,'alpine-shadow-disabled')
+   page.evaluate('railbound.renderer.settings.shadows=true;railbound.renderer.settings.normalMapping=false');render(page,'alpine-normal-disabled')
+   page.evaluate('railbound.renderer.settings.normalMapping=true;railbound.renderer.settings.surfaces=false');render(page,'alpine-procedural-reference')
+   page.evaluate('railbound.renderer.settings.surfaces=true');page.evaluate("railbound.loadWorld('pine')")
+   page.evaluate('''()=>{const a=railbound,w=a.world,candidates=w.batches.filter(b=>b.cutout&&b.lodNear>0&&b.lodNear<400&&b.count>8);let best=null;
+    for(const b of candidates)for(let i=0;i<b.count;i+=Math.max(1,Math.floor(b.count/12))){const x=b.data[i*24+12],z=b.data[i*24+14],h=w.surfaceHeight(x,z),ground=w.surfaceHeight(x+18,z+24);if(Math.abs(h-ground)>7||h<w.def.water+5)continue;const score=b.count-Math.abs(h-ground)*12;if(!best||score>best.score)best={x,z,h,ground,score};}
+    if(!best)throw new Error('No clear forest view');const {x,z,h,ground}=best;a.renderEnabled=false;a.paused=true;a.camera.position=[x+18,Math.max(h+6.5,ground+5),z+24];a.camera.target=[x,h+8,z];a.camera.setMode('free');a.camera.fov=62;}''')
+   render(page,'forest-materials')
    page.evaluate("railbound.loadWorld('metro')")
    page.evaluate('''()=>{const a=railbound,d=a.world.districts.slice().sort((x,y)=>y.buildings.length-x.buildings.length)[0],b=d.buildings[0],p=b.position;
     a.renderEnabled=false;a.paused=true;a.camera.position=[p[0]+d.right[0]*23+d.forward[0]*28,p[1]+5,p[2]+d.right[2]*23+d.forward[2]*28];a.camera.target=[p[0],p[1]+5,p[2]];a.camera.setMode('free');a.camera.fov=62;a.env.hour=14;}''')
    on,state=render(page,'city-materials',False)
+   check('metric architecture and public realm present',page.evaluate('(railbound.world.features.windowFrames||0)>100&&(railbound.world.features.streetFurniture||0)>5'))
    page.evaluate('railbound.renderer.settings.surfaces=false');off,_=render(page,'city-procedural-reference',False)
    changed('texture-backed surfaces change actual scene',on,off)
    page.evaluate('railbound.renderer.settings.surfaces=true;railbound.renderer.settings.normalMapping=false');flat,_=render(page,'city-normal-disabled',False)
@@ -102,10 +111,26 @@ with sync_playwright() as p:
    saved=page.evaluate('railbound.projectSnapshot()');page.evaluate('(data)=>railbound.importProject(data)',saved)
    check('material and contact settings survive save',page.evaluate('Math.abs(railbound.settings.cinematic.occlusion-.42)<.001'))
    page.wait_for_function('navigator.serviceWorker.controller!==null',timeout=60000)
-   check('all texture maps and modules cached',page.evaluate('''async()=>{const m=await(await fetch('assets/materials/manifest.json')).json();const paths=['src/materials.js','src/fidelity-shaders.js','src/contact-occlusion.js','src/shadow-cascades.js'];for(const l of m.layers)paths.push('assets/materials/'+l.albedo,'assets/materials/'+l.surface);for(const p of paths)if(!await caches.match(new URL(p,location.href)))return false;return true;}'''))
+   check('all texture maps and modules cached',page.evaluate('''async()=>{const m=await(await fetch('assets/materials/manifest.json')).json();const paths=['src/materials.js','src/fidelity-shaders.js','src/contact-occlusion.js','src/shadow-cascades.js','src/urban-detail.js'];for(const l of m.layers)paths.push('assets/materials/'+l.albedo,'assets/materials/'+l.surface);for(const p of paths)if(!await caches.match(new URL(p,location.href)))return false;return true;}'''))
    context.set_offline(True);page.reload(wait_until='domcontentloaded');boot(page);render(page,'offline-materials')
    context.set_offline(False)
    check('no JS or GPU validation errors',not report['errors'],report['errors'])
+   # A separately booted mobile session must actually allocate the mobile tier.
+   mobile=browser.new_context(viewport={'width':390,'height':844},device_scale_factor=1,has_touch=True)
+   if BACKEND=='webgl':mobile.add_init_script("Object.defineProperty(Navigator.prototype,'gpu',{get:()=>undefined,configurable:true})")
+   mp=mobile.new_page();mp.on('pageerror',lambda e:report['errors'].append(str(e)))
+   mp.goto(BASE,wait_until='domcontentloaded');boot(mp);_,small=render(mp,'mobile-cold-start',False)
+   check('mobile texture memory tier is quarter desktop',small['levels']==9 and small['bytes']<6_000_000,small)
+   mobile.close()
+   # The downloaded single file may navigate; all subsequent network dependencies are denied.
+   stand=browser.new_context(viewport={'width':800,'height':600},service_workers='block')
+   if BACKEND=='webgl':stand.add_init_script("Object.defineProperty(Navigator.prototype,'gpu',{get:()=>undefined,configurable:true})")
+   sp=stand.new_page();sp.set_default_timeout(240000);sp.on('pageerror',lambda e:report['errors'].append(str(e)))
+   response=sp.request.get(BASE+'downloads/Railbound-Adventures.html');check('standalone served',response.status==200)
+   stand.route('**/*',lambda route:route.continue_() if route.request.is_navigation_request() and route.request.url==BASE+'downloads/Railbound-Adventures.html' else route.abort())
+   sp.goto(BASE+'downloads/Railbound-Adventures.html',wait_until='domcontentloaded',timeout=90000);boot(sp);render(sp,'standalone-embedded',False)
+   stand.close()
+   check('all browser contexts have no JS errors',not report['errors'],report['errors'])
  except Exception as error:
   report['failure']=str(error);print('FAILURE',error,flush=True);print('ERRORS',json.dumps(report['errors']),flush=True)
   try:page.screenshot(path=str(OUT/'failure.png'),timeout=30000)

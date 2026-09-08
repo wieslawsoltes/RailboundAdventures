@@ -12,7 +12,7 @@ const FILES = [
   'src/postprocess.js', 'src/cinematic-models.js', 'src/world-life.js', 'src/journey.js', 'src/cinematic-ui.js',
   'src/generation.js', 'src/generation-worker.js', 'src/generation-ui.js',
   'src/world-detail.js', 'src/train-detail.js', 'src/botany.js', 'src/settlements.js', 'src/living-shaders.js', 'src/terrain-mesh.js',
-  'src/materials.js',
+  'src/urban-detail.js', 'src/materials.js',
   'src/fidelity-shaders.js',
   'src/shadow-cascades.js',
   'src/contact-occlusion.js',

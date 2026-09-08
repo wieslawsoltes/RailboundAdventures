@@ -77,18 +77,18 @@ export const SURFACE_APPLY_WGSL=/* wgsl */`
  var surfaceAO=1.;
  if(u.fidelity.x>.001){
   if(kind>.5&&kind<1.5){
-   let slope=1.-max(0.,rawNormal.y);let moisture=clamp(v.uv.x,0.,1.);let macro=fbm(v.world.xz*.0023);
+   let slope=1.-max(0.,rawNormal.y);let moisture=clamp(v.uv.x,0.,1.);let macroNoise=fbm(v.world.xz*.0023);
    let soilWeight=clamp((1.-moisture)*.7+smoothstep(.35,.65,fbm(v.world.xz*.018))*.48,0.,.82);
    let loam=readSurface(v.world,rawNormal,worldDx,worldDy,1,1./1.4);
    let grass=readSurface(v.world,rawNormal,worldDx,worldDy,0,1./2.1);
    var terrain=blendSurface(grass,loam,soilWeight);
    let rockWeight=smoothstep(.08,.40,slope);
    if(rockWeight>.001){terrain=blendSurface(terrain,readSurface(v.world,rawNormal,worldDx,worldDy,2,1./3.),rockWeight);}
-   var albedo=terrain.color*(.80+macro*.45);
+   var albedo=terrain.color*(.80+macroNoise*.45);
    if(u.env.z>2.5&&u.env.z<3.5){albedo=mix(loam.color*vec3f(2.8,1.55,.85),terrain.color*vec3f(1.65,1.05,.66),rockWeight);}
    if(u.env.z>4.5&&u.env.z<5.5){albedo*=vec3f(1.15,.96,.96);}
    let shore=(1.-smoothstep(u.env.w+1.,u.env.w+8.,v.world.y))*(1.-smoothstep(.06,.3,slope));albedo=mix(albedo,loam.color*vec3f(1.8,1.7,1.35),shore);
-   let snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,v.world.y+(macro-.5)*110.)*smoothstep(.38,.72,rawNormal.y);
+   let snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,v.world.y+(macroNoise-.5)*110.)*smoothstep(.38,.72,rawNormal.y);
    albedo=mix(albedo,vec3f(.76,.81,.86),snow);col=mix(col,albedo,u.fidelity.x);
    n=bumpNormal(rawNormal,terrain.bump*(1.-snow*.85));surfaceAO=mix(terrain.ao,1.,snow);
    let puddles=u.env.y*smoothstep(.45,.68,noise(v.world.xz*.27))*(1.-smoothstep(.01,.10,slope));
@@ -100,7 +100,7 @@ export const SURFACE_APPLY_WGSL=/* wgsl */`
    if(kind>12.5&&kind<13.5){layer=3;scale=1./3.;strength=1.;}
    if(kind>14.5&&kind<15.5){layer=5;scale=1.;strength=.82;}
    if(kind>15.5&&kind<16.5){layer=4;scale=.5;strength=1.;}
-   if(layer>=0){let tex=readSurface(v.world,rawNormal,worldDx,worldDy,layer,scale);col=mix(col,tex.color,strength*u.fidelity.x);n=bumpNormal(rawNormal,tex.bump);surfaceAO=tex.ao;rough=mix(rough,tex.rough,.7);
+   if(layer>=0){let tex=readSurface(v.world,rawNormal,worldDx,worldDy,layer,scale);col=mix(col,tex.color*mix(vec3f(1),col*3.,select(0.,.75,layer==5)),strength*u.fidelity.x);n=bumpNormal(rawNormal,tex.bump);surfaceAO=tex.ao;rough=mix(rough,tex.rough,.7);
     if(kind>12.5&&kind<13.5){let puddles=u.env.y*smoothstep(.35,.65,noise(v.world.xz*.19));rough=mix(rough,.075,puddles);col*=1.-puddles*.35;}}
   }
  }
@@ -110,15 +110,15 @@ export const SURFACE_APPLY_GLSL=/* glsl */`
  float surfaceAO=1.;
  if(u.fidelity.x>.001){
   if(kind>.5&&kind<1.5){
-   float slope=1.-max(0.,rawNormal.y),moisture=clamp(uv.x,0.,1.),macro=fbm(world.xz*.0023);
+   float slope=1.-max(0.,rawNormal.y),moisture=clamp(uv.x,0.,1.),macroNoise=fbm(world.xz*.0023);
    float soilWeight=clamp((1.-moisture)*.7+smoothstep(.35,.65,fbm(world.xz*.018))*.48,0.,.82);
    Surface loam=readSurface(world,rawNormal,worldDx,worldDy,1,1./1.4),grass=readSurface(world,rawNormal,worldDx,worldDy,0,1./2.1),terrain=blendSurface(grass,loam,soilWeight);
    float rockWeight=smoothstep(.08,.40,slope);if(rockWeight>.001)terrain=blendSurface(terrain,readSurface(world,rawNormal,worldDx,worldDy,2,1./3.),rockWeight);
-   vec3 albedo=terrain.color*(.80+macro*.45);
+   vec3 albedo=terrain.color*(.80+macroNoise*.45);
    if(u.env.z>2.5&&u.env.z<3.5)albedo=mix(loam.color*vec3(2.8,1.55,.85),terrain.color*vec3(1.65,1.05,.66),rockWeight);
    if(u.env.z>4.5&&u.env.z<5.5)albedo*=vec3(1.15,.96,.96);
    float shore=(1.-smoothstep(u.env.w+1.,u.env.w+8.,world.y))*(1.-smoothstep(.06,.3,slope));albedo=mix(albedo,loam.color*vec3(1.8,1.7,1.35),shore);
-   float snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,world.y+(macro-.5)*110.)*smoothstep(.38,.72,rawNormal.y);
+   float snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,world.y+(macroNoise-.5)*110.)*smoothstep(.38,.72,rawNormal.y);
    albedo=mix(albedo,vec3(.76,.81,.86),snow);col=mix(col,albedo,u.fidelity.x);n=bumpNormal(rawNormal,terrain.bump*(1.-snow*.85));surfaceAO=mix(terrain.ao,1.,snow);
    float puddles=u.env.y*smoothstep(.45,.68,noise(world.xz*.27))*(1.-smoothstep(.01,.10,slope));rough=mix(terrain.rough,.10,puddles);col*=1.-u.env.y*.22;
   }else{
@@ -128,7 +128,7 @@ export const SURFACE_APPLY_GLSL=/* glsl */`
    if(kind>12.5&&kind<13.5){layer=3;scale=1./3.;strength=1.;}
    if(kind>14.5&&kind<15.5){layer=5;scale=1.;strength=.82;}
    if(kind>15.5&&kind<16.5){layer=4;scale=.5;strength=1.;}
-   if(layer>=0){Surface tex=readSurface(world,rawNormal,worldDx,worldDy,layer,scale);col=mix(col,tex.color,strength*u.fidelity.x);n=bumpNormal(rawNormal,tex.bump);surfaceAO=tex.ao;rough=mix(rough,tex.rough,.7);
+   if(layer>=0){Surface tex=readSurface(world,rawNormal,worldDx,worldDy,layer,scale);col=mix(col,tex.color*mix(vec3(1),col*3.,layer==5?.75:0.),strength*u.fidelity.x);n=bumpNormal(rawNormal,tex.bump);surfaceAO=tex.ao;rough=mix(rough,tex.rough,.7);
     if(kind>12.5&&kind<13.5){float puddles=u.env.y*smoothstep(.35,.65,noise(world.xz*.19));rough=mix(rough,.075,puddles);col*=1.-puddles*.35;}}
   }
  }

@@ -1036,18 +1036,18 @@ const SURFACE_APPLY_WGSL=/* wgsl */`
  var surfaceAO=1.;
  if(u.fidelity.x>.001){
   if(kind>.5&&kind<1.5){
-   let slope=1.-max(0.,rawNormal.y);let moisture=clamp(v.uv.x,0.,1.);let macro=fbm(v.world.xz*.0023);
+   let slope=1.-max(0.,rawNormal.y);let moisture=clamp(v.uv.x,0.,1.);let macroNoise=fbm(v.world.xz*.0023);
    let soilWeight=clamp((1.-moisture)*.7+smoothstep(.35,.65,fbm(v.world.xz*.018))*.48,0.,.82);
    let loam=readSurface(v.world,rawNormal,worldDx,worldDy,1,1./1.4);
    let grass=readSurface(v.world,rawNormal,worldDx,worldDy,0,1./2.1);
    var terrain=blendSurface(grass,loam,soilWeight);
    let rockWeight=smoothstep(.08,.40,slope);
    if(rockWeight>.001){terrain=blendSurface(terrain,readSurface(v.world,rawNormal,worldDx,worldDy,2,1./3.),rockWeight);}
-   var albedo=terrain.color*(.80+macro*.45);
+   var albedo=terrain.color*(.80+macroNoise*.45);
    if(u.env.z>2.5&&u.env.z<3.5){albedo=mix(loam.color*vec3f(2.8,1.55,.85),terrain.color*vec3f(1.65,1.05,.66),rockWeight);}
    if(u.env.z>4.5&&u.env.z<5.5){albedo*=vec3f(1.15,.96,.96);}
    let shore=(1.-smoothstep(u.env.w+1.,u.env.w+8.,v.world.y))*(1.-smoothstep(.06,.3,slope));albedo=mix(albedo,loam.color*vec3f(1.8,1.7,1.35),shore);
-   let snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,v.world.y+(macro-.5)*110.)*smoothstep(.38,.72,rawNormal.y);
+   let snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,v.world.y+(macroNoise-.5)*110.)*smoothstep(.38,.72,rawNormal.y);
    albedo=mix(albedo,vec3f(.76,.81,.86),snow);col=mix(col,albedo,u.fidelity.x);
    n=bumpNormal(rawNormal,terrain.bump*(1.-snow*.85));surfaceAO=mix(terrain.ao,1.,snow);
    let puddles=u.env.y*smoothstep(.45,.68,noise(v.world.xz*.27))*(1.-smoothstep(.01,.10,slope));
@@ -1059,7 +1059,7 @@ const SURFACE_APPLY_WGSL=/* wgsl */`
    if(kind>12.5&&kind<13.5){layer=3;scale=1./3.;strength=1.;}
    if(kind>14.5&&kind<15.5){layer=5;scale=1.;strength=.82;}
    if(kind>15.5&&kind<16.5){layer=4;scale=.5;strength=1.;}
-   if(layer>=0){let tex=readSurface(v.world,rawNormal,worldDx,worldDy,layer,scale);col=mix(col,tex.color,strength*u.fidelity.x);n=bumpNormal(rawNormal,tex.bump);surfaceAO=tex.ao;rough=mix(rough,tex.rough,.7);
+   if(layer>=0){let tex=readSurface(v.world,rawNormal,worldDx,worldDy,layer,scale);col=mix(col,tex.color*mix(vec3f(1),col*3.,select(0.,.75,layer==5)),strength*u.fidelity.x);n=bumpNormal(rawNormal,tex.bump);surfaceAO=tex.ao;rough=mix(rough,tex.rough,.7);
     if(kind>12.5&&kind<13.5){let puddles=u.env.y*smoothstep(.35,.65,noise(v.world.xz*.19));rough=mix(rough,.075,puddles);col*=1.-puddles*.35;}}
   }
  }
@@ -1069,15 +1069,15 @@ const SURFACE_APPLY_GLSL=/* glsl */`
  float surfaceAO=1.;
  if(u.fidelity.x>.001){
   if(kind>.5&&kind<1.5){
-   float slope=1.-max(0.,rawNormal.y),moisture=clamp(uv.x,0.,1.),macro=fbm(world.xz*.0023);
+   float slope=1.-max(0.,rawNormal.y),moisture=clamp(uv.x,0.,1.),macroNoise=fbm(world.xz*.0023);
    float soilWeight=clamp((1.-moisture)*.7+smoothstep(.35,.65,fbm(world.xz*.018))*.48,0.,.82);
    Surface loam=readSurface(world,rawNormal,worldDx,worldDy,1,1./1.4),grass=readSurface(world,rawNormal,worldDx,worldDy,0,1./2.1),terrain=blendSurface(grass,loam,soilWeight);
    float rockWeight=smoothstep(.08,.40,slope);if(rockWeight>.001)terrain=blendSurface(terrain,readSurface(world,rawNormal,worldDx,worldDy,2,1./3.),rockWeight);
-   vec3 albedo=terrain.color*(.80+macro*.45);
+   vec3 albedo=terrain.color*(.80+macroNoise*.45);
    if(u.env.z>2.5&&u.env.z<3.5)albedo=mix(loam.color*vec3(2.8,1.55,.85),terrain.color*vec3(1.65,1.05,.66),rockWeight);
    if(u.env.z>4.5&&u.env.z<5.5)albedo*=vec3(1.15,.96,.96);
    float shore=(1.-smoothstep(u.env.w+1.,u.env.w+8.,world.y))*(1.-smoothstep(.06,.3,slope));albedo=mix(albedo,loam.color*vec3(1.8,1.7,1.35),shore);
-   float snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,world.y+(macro-.5)*110.)*smoothstep(.38,.72,rawNormal.y);
+   float snow=smoothstep(u.viewport.z-65.,u.viewport.z+65.,world.y+(macroNoise-.5)*110.)*smoothstep(.38,.72,rawNormal.y);
    albedo=mix(albedo,vec3(.76,.81,.86),snow);col=mix(col,albedo,u.fidelity.x);n=bumpNormal(rawNormal,terrain.bump*(1.-snow*.85));surfaceAO=mix(terrain.ao,1.,snow);
    float puddles=u.env.y*smoothstep(.45,.68,noise(world.xz*.27))*(1.-smoothstep(.01,.10,slope));rough=mix(terrain.rough,.10,puddles);col*=1.-u.env.y*.22;
   }else{
@@ -1087,7 +1087,7 @@ const SURFACE_APPLY_GLSL=/* glsl */`
    if(kind>12.5&&kind<13.5){layer=3;scale=1./3.;strength=1.;}
    if(kind>14.5&&kind<15.5){layer=5;scale=1.;strength=.82;}
    if(kind>15.5&&kind<16.5){layer=4;scale=.5;strength=1.;}
-   if(layer>=0){Surface tex=readSurface(world,rawNormal,worldDx,worldDy,layer,scale);col=mix(col,tex.color,strength*u.fidelity.x);n=bumpNormal(rawNormal,tex.bump);surfaceAO=tex.ao;rough=mix(rough,tex.rough,.7);
+   if(layer>=0){Surface tex=readSurface(world,rawNormal,worldDx,worldDy,layer,scale);col=mix(col,tex.color*mix(vec3(1),col*3.,layer==5?.75:0.),strength*u.fidelity.x);n=bumpNormal(rawNormal,tex.bump);surfaceAO=tex.ao;rough=mix(rough,tex.rough,.7);
     if(kind>12.5&&kind<13.5){float puddles=u.env.y*smoothstep(.35,.65,noise(world.xz*.19));rough=mix(rough,.075,puddles);col*=1.-puddles*.35;}}
   }
  }
@@ -1507,11 +1507,116 @@ class Renderer {
 
 return {Renderer};
 })();
+// ---- src/urban-detail.js ----
+const __m_src_urban_detail_js = (() => {
+const {Batch,MeshBuilder,PRIMITIVES} = __m_src_geometry_js;
+const {hex,transform,mat4Mul,add} = __m_src_math_js;
+/** Near-field architecture and public-space dressing; no per-window draw calls.
+ * Detail batches are bounded per building and use shared primitive geometry.
+ * Paved aprons conform to the rendered terrain and remain inside their parcels.
+ */
+
+
+const STONE=hex('#c4bfb0'),FRAME=hex('#4d5857'),METAL=hex('#354241'),TIMBER=hex('#7d6950');
+const terrain=(w,x,z)=>w.surfaceHeight?.(x,z)??w.height(x,z);
+const ARCHITECTURE_DETAIL_RANGE=360;
+function facadeWindows(width,height,modern=false){
+ if(![width,height].every(Number.isFinite)||width<=0||height<=0)return [];
+ const margin=modern?.065:.19,windows=[];
+ // The shader uses metre-scaled UV coordinates from the lower-left corner.
+ for(let y=0;y+3.2<=Math.min(height+.01,32);y+=3.2)for(let x=0;x+3<=width+.001;x+=3)
+  windows.push({x:-width/2+x+1.5,y:y+(3.2*(.21+.84))/2,width:3*(1-2*margin),height:3.2*(.84-.21)});
+ return windows;
+}
+function pavedApron(world,d,building){
+ const {position:p,width,depth}=building,c=Math.cos(d.yaw),s=Math.sin(d.yaw),mesh=new MeshBuilder();
+ const point=(x,z)=>{const wx=p[0]+c*x+s*z,wz=p[2]-s*x+c*z;return [wx,terrain(world,wx,wz)+.045,wz];};
+ const strips=[[-width/2-.45,-depth/2-.45,width/2+.45,-depth/2],[-width/2-.45,depth/2,width/2+.45,depth/2+1.2],[-width/2-.45,-depth/2,-width/2,depth/2],[width/2,-depth/2,width/2+.45,depth/2]];
+ let cells=0;
+ for(const [left,near,right,far] of strips)for(let z=near;z<far-.001;z+=2)for(let x=left;x<right-.001;x+=2){
+  const q=[point(x,z),point(Math.min(right,x+2),z),point(Math.min(right,x+2),Math.min(far,z+2)),point(x,Math.min(far,z+2))];
+  if(q.some(v=>!v.every(Number.isFinite)||v[1]<world.def.water+1||world.network.nearest(v[0],v[2],9)))continue;
+  if(Math.max(...q.map(v=>v[1]))-Math.min(...q.map(v=>v[1]))>.5)continue;
+  mesh.quad(q[0],q[3],q[2],q[1]);cells++;
+ }
+ if(!cells)return null;
+ const batch=world.builder.mesh(mesh.geometry(),p,Math.hypot(width,depth),[16,.90,0,0],STONE);batch.maxDistance=1300;batch.castShadow=false;
+ return {batch,cells};
+}
+function addArchitecturalDetail(world,d,building,seed){
+ const {position:p,width,depth,height,style}=building,modern=style==='glass';
+ const matrix=transform(p,[1,1,1],d.yaw),batch=new Batch(PRIMITIVES.box,{center:add(p,[0,Math.min(height,32)*.5,0]),radius:Math.hypot(width,depth,Math.min(height,32))*.65,maxDistance:ARCHITECTURE_DETAIL_RANGE});
+ batch.lodNear=ARCHITECTURE_DETAIL_RANGE;batch.detailClass='architecture';
+ const part=(pos,size,color=STONE,props=[6,.86,0,0])=>batch.add(mat4Mul(matrix,transform(pos,size)),color,props);
+ let windows=0;
+ for(const face of [0,1,2,3]){
+  const faceWidth=face<2?width:depth,orientation=face%2===0?1:-1;
+  for(const w of facadeWindows(faceWidth,modern?Math.min(height,9.6):height,modern)){
+   // Four frames sit outside the facade, leaving its parallax window visible.
+   const map=(u,y,out)=>face<2?[orientation*u,y,orientation*(depth/2+out)]:[orientation*(width/2+out),y,-orientation*u];
+   const scale=(u,y,out)=>face<2?[u,y,out]:[out,y,u];
+   const dark=modern?FRAME:STONE;
+   for(const side of [-1,1])part(map(w.x+side*(w.width/2+.04),w.y,.055),scale(.08,w.height+.18,.11),dark,modern?[0,.38,.48,0]:[6,.84,0,0]);
+   part(map(w.x,w.y-w.height/2-.03,.09),scale(w.width+.30,.11,.27),dark);
+   part(map(w.x,w.y+w.height/2+.06,.045),scale(w.width+.20,.10,.11),dark);
+   windows++;
+  }
+ }
+ // Small-scale cues at the entrance: door frame, pull handle, lamp and notice.
+ for(const side of [-1,1])part([side*.91,1.25,depth*.5+.12],[.11,2.5,.19],FRAME,[0,.5,.3,0]);
+ part([0,2.52,depth*.5+.12],[1.93,.1,.19],FRAME,[0,.5,.3,0]);part([.45,1.15,depth*.5+.18],[.045,.40,.06],STONE,[0,.22,.85,0]);
+ part([1.6,1.7,depth*.5+.14],[.36,.48,.05],hex('#c1b59b'),[0,.8,0,0]);
+ part([-1.9,2.35,depth*.5+.18],[.34,.33,.26],METAL,[0,.4,.5,0]);
+ part([-1.9,2.34,depth*.5+.325],[.21,.21,.03],hex('#eee1b7'),[4,.4,0,.36]);
+ // One framed shop awning, with a striped valance, in suitable local centres.
+ if(!modern&&building.floors>=2&&seed>.4){
+  const awning=hex(seed>.72?'#53634c':'#846051'),span=Math.min(width*.5,6.5);
+  part([width*.23,2.48,depth*.5+.73],[span,.12,1.35],awning,[0,.94,0,0]);
+  for(let x=-span/2;x<span/2;x+=.38)part([width*.23+x+.095,2.33,depth*.5+1.40],[.18,.26,.035],STONE,[0,.98,0,0]);
+  world.features.shopAwnings=(world.features.shopAwnings||0)+1;
+ }
+ batch.finish();world.builder.batches.push(batch);
+ const apron=pavedApron(world,d,building);
+ world.features.windowFrames=(world.features.windowFrames||0)+windows;
+ world.features.pavedAprons=(world.features.pavedAprons||0)+(apron?1:0);
+ return {batch,windows,apron};
+}
+function point(d,x,z){return [d.origin[0]+d.right[0]*x+d.forward[0]*z,0,d.origin[2]+d.right[2]*x+d.forward[2]*z];}
+function buildPublicRealm(world){
+ let count=0;
+ for(const d of world.districts||[])for(let i=0;i<d.roads.length;i++){
+  const road=d.roads[i];if(!road.built||i%3!==1)continue;
+  const x=(road.a[0]+road.b[0])*.5,z=(road.a[1]+road.b[1])*.5,along=road.axis==='z',yaw=d.yaw+(along?0:Math.PI*.5);
+  const p=point(d,x+(along?5.65:0),z+(along?0:5.65));p[1]=terrain(world,p[0],p[2])+.30;
+  if(p[1]<world.def.water+1.3||world.network.nearest(p[0],p[2],10))continue;
+  const base=transform(p,[1,1,1],yaw),b=new Batch(PRIMITIVES.box,{center:add(p,[0,1,0]),radius:5,maxDistance:330});b.lodNear=400;b.detailClass='street';
+  const part=(v,s,col,props=[0,.78,0,0])=>b.add(mat4Mul(base,transform(v,s)),col,props);
+  if(i%2){
+   // Slatted bench and backrest, two steel legs.
+   for(let k=0;k<5;k++)part([(k-2)*.115,.47,0],[.095,.065,1.75],TIMBER);
+   for(let k=0;k<3;k++)part([.30,.70+k*.10,0],[.065,.075,1.75],TIMBER);
+   for(const side of [-1,1]){part([0,.22,side*.65],[.43,.43,.06],METAL,[0,.60,.3,0]);part([.29,.64,side*.65],[.06,.74,.06],METAL,[0,.60,.3,0]);}
+  }else{
+   // Street bin with metal rim and an inset dark opening.
+   part([0,.43,0],[.50,.86,.55],METAL,[0,.6,.3,0]);part([0,.89,0],[.57,.07,.62],STONE,[0,.4,.5,0]);part([-.257,.69,0],[.03,.17,.35],hex('#121b1b'));
+  }
+  // A curb drain uses actual slots; detail is culled outside its range.
+  const drain=[-1.42,-.10,2];part(drain,[.54,.035,.85],METAL,[0,.55,.55,0]);
+  for(let k=0;k<5;k++)part([drain[0],-.075,drain[2]+(k-2)*.135],[.44,.014,.06],hex('#151d1b'));
+  b.finish();world.builder.batches.push(b);count++;
+ }
+ world.features.streetFurniture=count;return count;
+}
+
+return {ARCHITECTURE_DETAIL_RANGE,facadeWindows,pavedApron,addArchitecturalDetail,buildPublicRealm};
+})();
 // ---- src/settlements.js ----
 const __m_src_settlements_js = (() => {
+const {addArchitecturalDetail,buildPublicRealm} = __m_src_urban_detail_js;
 const {Geometry,MeshBuilder,PRIMITIVES} = __m_src_geometry_js;
 const {rng,hash2,hex,clamp,add,mul,transform,mat4Mul,norm,sub,TAU} = __m_src_math_js;
 const {addLivingTree} = __m_src_botany_js;
+
 /** Parcel-based regional settlements. Road graph -> buildable lots -> architecture.
  * Streets and foundations sample the rendered terrain. Every lot reserves a
  * footprint; water, steep grades, rail clearance and overlaps are rejected.
@@ -1602,7 +1707,7 @@ function buildRoad(world,d,road,points){
  }
  const middle=points[Math.floor(points.length/2)],radius=d.pitch*.8;
  const asphalt=b.mesh(mesh.geometry(),middle,radius,[13,.92,0,0],ASPHALT);asphalt.maxDistance=3600;
- const walk=b.mesh(sidewalk.geometry(),middle,radius,[6,.92,0,0],PAVING);walk.maxDistance=2700;
+ const walk=b.mesh(sidewalk.geometry(),middle,radius,[16,.92,0,0],PAVING);walk.maxDistance=2700;
  for(const t of [.18,.75]){
   const p=ground(points[Math.floor((points.length-1)*t)],5.8,.13);
   const lamp=b.instance('cylinder',add(p,[0,3.3,0]),[.11,6.6,.11],STEEL);lamp.maxDistance=2600;
@@ -1731,7 +1836,7 @@ function building(world,d,p,width,depth,floors,style,seed){
  for(const tier of massing)for(const side of [-1,1])localPart(world,d,base,[side*(tier.width*.5+.075),tier.y+tier.height*.5,-tier.depth*.42],[.10,tier.height,.10],STEEL,[0,.6,.3,0]);
  if(floors<=4){localPart(world,d,base,[width*.22,height+2.3,-depth*.22],[.9,3.1,1.1],hex('#8d8376'),[12,.95,0,seed]);
   if(seed>.5)for(let k=0;k<3;k++)localPart(world,d,base,[-width*.23,height+width*.12+.5,(k-1)*2.1],[width*.32,.09,1.8],hex('#2b4654'),[3,.19,.5,0],'box',-.43);}
- d.buildings.push({position:base,width,depth,height,floors,style,tiers:massing.length});world.features.buildings++;return true;
+ const record={position:base,width,depth,height,floors,style,tiers:massing.length};d.buildings.push(record);addArchitecturalDetail(world,d,record,seed);world.features.buildings++;return true;
 }
 function garden(world,d,lot){
  const p=districtPoint(d,lot.cx,lot.cz),h=surface(world,p[0],p[2]);if(h<world.def.water+2)return;
@@ -1780,7 +1885,7 @@ async function buildSettlements(world,onProgress=()=>{}){
   if(d.buildings.length){const center=d.buildings[Math.floor(d.buildings.length*.5)].position;world.viewpoints.push({name:`${d.name} streets`,position:add(center,mul(d.forward,85)).map((v,i)=>i===1?v+55:v),target:add(center,[0,8,0])});}
   onProgress('Laying streets, parcels & neighbourhoods',.59);await new Promise(resolve=>setTimeout(resolve,0));
  }
- world.features.districts=world.districts.filter(d=>d.buildings.length).length;
+ world.features.districts=world.districts.filter(d=>d.buildings.length).length;buildPublicRealm(world);
 }
 
 return {CITY_REVISION,DISTRICT_PROFILES,districtPoint,planSettlements,footprint,roadSamples,connectedRoads,footprintsOverlap,buildingMassing,parkedVehicleArchetype,buildSettlements};
@@ -3258,7 +3363,7 @@ class UI {
  mapPanel(){const a=this.app;$('panel-content').innerHTML=`<p class="panel-intro">A live view of the complete railway. Stations, your train, AI services and both junction routes share the same physical network.</p><div class="map-layout"><div class="large-map-wrap"><canvas id="large-map" class="large-map"></canvas><div class="map-legend"><span style="color:#e6bb79">● Your train</span><span style="color:#92c3c2">● AI services</span><span>○ Station</span><span>— Main line</span><span>╌ Scenic branch</span></div></div><aside><span class="overline">STATIONS</span><div class="station-list">${a.world.stations.map(s=>`<button data-station="${s.id}">${escapeHTML(s.name)}<span>${icon('arrow','icon small')}</span></button>`).join('')}</div><p class="map-note">Select a station to relocate your train while stopped. Teleporting resets the current service.</p><button class="secondary" id="map-switch">${a.world.network.switchBranch?'Scenic branch selected':'Main line selected'}</button><p class="map-note">A turnout is locked while a train occupies its approach or fouling zone.</p></aside></div>`;document.querySelectorAll('[data-station]').forEach(b=>b.onclick=()=>this.guard(()=>{const st=a.world.stations.find(s=>s.id===b.dataset.station);a.teleport(st.edge,st.s);this.toast(`Positioned at ${st.name}.`);}));$('map-switch').onclick=()=>this.guard(()=>{a.toggleSwitch();$('map-switch').textContent=a.world.network.switchBranch?'Scenic branch selected':'Main line selected';});this.bindMap(false);this.drawMap($('large-map'),true);}
  dispatchPanel(){const a=this.app;$('panel-content').innerHTML=`<div class="panel-two-column"><section><div class="panel-section"><h3>Junction control</h3><p class="map-note">Set the next diverging route. The full consist retains its chosen route until it clears the junction.</p><div class="button-row"><button id="dispatch-switch" class="primary">${a.world.network.switchBranch?'Scenic branch':'Main line'} selected</button><button id="hold-signal" class="secondary">Hold next block</button><button id="clear-signals" class="secondary">Release holds</button></div><p id="signal-holds" class="map-note">${a.world.traffic.holds.size} manually held blocks · ${a.world.traffic.occupied.size} occupied blocks</p></div><div class="large-map-wrap"><canvas id="large-map" class="large-map" style="height:240px"></canvas></div></section><section><span class="section-label">Active trains</span>${a.trains.map(t=>`<div class="dispatch-train"><div><b>${t===a.player?'● ':''}${t.stock.name}</b><small>${t.id==='player'?'You':t.id} · ${(Math.abs(t.speed)*3.6).toFixed(0)} km/h · ${t.cars+1} vehicles</small></div>${t!==a.player?`<button class="secondary" data-takeover="${t.id}">Drive</button><button class="bare" data-remove="${t.id}" title="Remove train">×</button>`:'<span class="overline">DRIVING</span>'}</div>`).join('')}<div class="button-row"><button id="add-ai" class="secondary">+ Add AI service</button><button id="auto-drive" class="secondary ${a.autopilot?'active':''}">${a.autopilot?'Disable':'Enable'} autopilot</button></div><div class="panel-notice">AI observes block occupancy, curves and station stops. This is a simplified one-way block system, not a complete railway interlocking implementation.</div></section></div>`;$('dispatch-switch').onclick=()=>this.guard(()=>{a.toggleSwitch();this.dispatchPanel();});$('hold-signal').onclick=()=>{a.world.traffic.holds.add(a.world.traffic.block(a.player.cursor.pose(480)));this.dispatchPanel();this.toast('Next approach block held at danger.');};$('clear-signals').onclick=()=>{a.world.traffic.holds.clear();this.dispatchPanel();};$('add-ai').onclick=()=>this.guard(()=>{a.addAI();this.dispatchPanel();});$('auto-drive').onclick=()=>{a.autopilot=!a.autopilot;this.dispatchPanel();};document.querySelectorAll('[data-takeover]').forEach(b=>b.onclick=()=>{a.takeOver(b.dataset.takeover);this.closePanel();this.toast('You have control of this service.');});document.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{a.removeAI(b.dataset.remove);this.dispatchPanel();});this.drawMap($('large-map'),true);}
  missionsPanel(){const a=this.app;$('panel-content').innerHTML=`<p class="panel-intro">Choose a purpose for your run. Passenger services reward precise stops and smooth driving. Free roam leaves every tool open.</p>${SCENARIOS.map(s=>`<div class="mission-card"><div class="mission-icon">${icon('flag')}</div><div><h3>${s.name}</h3><p>${s.description}</p></div><button class="secondary ${a.mission.mode===s.id?'selected':''}" data-mission="${s.id}">${a.mission.mode===s.id?'Restart':'Start'} service</button></div>`).join('')}<div class="panel-section"><h3>Current service</h3><p>${escapeHTML(a.mission.message)}</p><div class="spec-grid"><div><span>SCORE</span><b>${Math.round(a.mission.score)}</b></div><div><span>STATIONS SERVED</span><b>${a.mission.stops}</b></div><div><span>PASSENGERS BOARDED</span><b>${a.mission.boarded}</b></div><div><span>STATUS</span><b>${a.mission.complete?'Complete':a.mission.mode==='free'?'Exploring':'In service'}</b></div></div>${a.mission.stopLog.map(s=>`<p class="map-note">${escapeHTML(s.station)} · ${escapeHTML(s.result)}</p>`).join('')}</div>`;document.querySelectorAll('[data-mission]').forEach(b=>b.onclick=()=>{a.startMission(b.dataset.mission);this.closePanel();this.toast(a.mission.mode==='free'?'Free roam. The railway is yours.':'Service started. Follow the next station marker.');});}
- settingsPanel(){const a=this.app,s=a.settings;$('panel-content').innerHTML=`<div class="panel-two-column"><section><div class="panel-section"><h3>Graphics</h3><button class="secondary" id="cinematic-settings">Display, immersion & photo studio</button><label class="field"><span>Rendering quality</span><select id="set-quality">${['low','medium','high','ultra'].map(q=>`<option value="${q}" ${s.quality===q?'selected':''}>${q[0].toUpperCase()+q.slice(1)}</option>`).join('')}</select></label>${this.field('Render resolution','set-resolution',50,100,5,Math.round(s.resolution*100),'%')}${this.toggle('Directional shadows','set-shadows',s.shadows)}${this.toggle('Adaptive resolution','set-adaptive',s.adaptive,'Reduce resolution when frame time stays high.')}<div class="panel-notice">Active backend: <b>${a.renderer.kind}</b>. WebGPU is preferred; WebGL 2 is the compatibility fallback. No external assets or libraries are downloaded.</div></div><div class="panel-section"><h3>Audio</h3>${this.field('Master volume','set-volume',0,100,1,Math.round(s.volume*100),'%')}<button class="secondary" id="set-audio">${a.audio.enabled?'Mute sound':'Enable sound'}</button></div></section><section><div class="panel-section"><h3>Driving</h3>${this.toggle('Automatic train protection','set-safety',s.safety,'Brakes for excessive speed and occupied blocks.')}${this.toggle('Gamepad input','set-gamepad',s.gamepad)}<label class="field"><span>Speed units</span><select id="set-units"><option value="km/h" ${s.units==='km/h'?'selected':''}>Kilometres per hour</option><option value="mph" ${s.units==='mph'?'selected':''}>Miles per hour</option></select></label>${this.field('Simulation speed','set-time',.25,4,.25,s.timeScale,'×')}<div class="button-row"><button id="recover" class="secondary danger-button">Recover stopped train</button><button id="hide-hud" class="secondary">Hide controls</button></div></div><div class="panel-section"><h3>Keep your railway</h3><div class="button-row"><button id="save-project" class="primary">${icon('save','icon small')} Export project</button><button id="open-project" class="secondary">Open project</button><button id="restore-save" class="secondary" ${storageGet(SAVE_KEY)?'':'disabled'}>Restore autosave</button></div><p class="map-note">Autosaves are local to this browser. Export a JSON project to transfer your world, trains, weather and progress to another device.</p><button id="save-now" class="secondary">Save in this browser</button></div></section></div>`;$('cinematic-settings').onclick=()=>this.openPanel('cinematic');$('set-quality').onchange=e=>{s.quality=e.target.value;a.applySettings();};this.bindRange('set-resolution',v=>{s.resolution=v/100;a.applySettings();},v=>v+'%');for(const id of ['shadows','adaptive','safety','gamepad'])$('set-'+id).onchange=e=>{s[id]=e.target.checked;a.applySettings();};$('set-units').onchange=e=>s.units=e.target.value;this.bindRange('set-volume',v=>{s.volume=v/100;a.audio.volume=s.volume;},v=>v+'%');this.bindRange('set-time',v=>s.timeScale=v,v=>v+'×');$('set-audio').onclick=()=>this.guard(async()=>{await a.audio.toggle();$('set-audio').textContent=a.audio.enabled?'Mute sound':'Enable sound';});$('recover').onclick=()=>{a.recover();this.toast('Train recovered and brakes secured.');};$('hide-hud').onclick=()=>{this.closePanel();document.body.classList.add('hud-hidden');};$('save-project').onclick=()=>a.exportProject();$('open-project').onclick=()=>$('project-file').click();$('restore-save').onclick=()=>this.guard(async()=>{await a.importProject(JSON.parse(storageGet(SAVE_KEY)));this.closePanel();this.toast('Autosave restored.');});$('save-now').onclick=()=>this.toast(a.autosave()?'Saved in this browser.':'Browser storage is unavailable. Export a project instead.',!a.storageAvailable);}
+ settingsPanel(){const a=this.app,s=a.settings;$('panel-content').innerHTML=`<div class="panel-two-column"><section><div class="panel-section"><h3>Graphics</h3><button class="secondary" id="cinematic-settings">Display, immersion & photo studio</button><label class="field"><span>Rendering quality</span><select id="set-quality">${['low','medium','high','ultra'].map(q=>`<option value="${q}" ${s.quality===q?'selected':''}>${q[0].toUpperCase()+q.slice(1)}</option>`).join('')}</select></label>${this.field('Render resolution','set-resolution',50,100,5,Math.round(s.resolution*100),'%')}${this.toggle('Directional shadows','set-shadows',s.shadows)}${this.toggle('Adaptive resolution','set-adaptive',s.adaptive,'Reduce resolution when frame time stays high.')}<div class="panel-notice">Active backend: <b>${a.renderer.kind}</b>. WebGPU is preferred; WebGL 2 is the compatibility fallback. Surface maps are bundled and served locally; there are no runtime CDN or library dependencies.</div></div><div class="panel-section"><h3>Audio</h3>${this.field('Master volume','set-volume',0,100,1,Math.round(s.volume*100),'%')}<button class="secondary" id="set-audio">${a.audio.enabled?'Mute sound':'Enable sound'}</button></div></section><section><div class="panel-section"><h3>Driving</h3>${this.toggle('Automatic train protection','set-safety',s.safety,'Brakes for excessive speed and occupied blocks.')}${this.toggle('Gamepad input','set-gamepad',s.gamepad)}<label class="field"><span>Speed units</span><select id="set-units"><option value="km/h" ${s.units==='km/h'?'selected':''}>Kilometres per hour</option><option value="mph" ${s.units==='mph'?'selected':''}>Miles per hour</option></select></label>${this.field('Simulation speed','set-time',.25,4,.25,s.timeScale,'×')}<div class="button-row"><button id="recover" class="secondary danger-button">Recover stopped train</button><button id="hide-hud" class="secondary">Hide controls</button></div></div><div class="panel-section"><h3>Keep your railway</h3><div class="button-row"><button id="save-project" class="primary">${icon('save','icon small')} Export project</button><button id="open-project" class="secondary">Open project</button><button id="restore-save" class="secondary" ${storageGet(SAVE_KEY)?'':'disabled'}>Restore autosave</button></div><p class="map-note">Autosaves are local to this browser. Export a JSON project to transfer your world, trains, weather and progress to another device.</p><button id="save-now" class="secondary">Save in this browser</button></div></section></div>`;$('cinematic-settings').onclick=()=>this.openPanel('cinematic');$('set-quality').onchange=e=>{s.quality=e.target.value;a.applySettings();};this.bindRange('set-resolution',v=>{s.resolution=v/100;a.applySettings();},v=>v+'%');for(const id of ['shadows','adaptive','safety','gamepad'])$('set-'+id).onchange=e=>{s[id]=e.target.checked;a.applySettings();};$('set-units').onchange=e=>s.units=e.target.value;this.bindRange('set-volume',v=>{s.volume=v/100;a.audio.volume=s.volume;},v=>v+'%');this.bindRange('set-time',v=>s.timeScale=v,v=>v+'×');$('set-audio').onclick=()=>this.guard(async()=>{await a.audio.toggle();$('set-audio').textContent=a.audio.enabled?'Mute sound':'Enable sound';});$('recover').onclick=()=>{a.recover();this.toast('Train recovered and brakes secured.');};$('hide-hud').onclick=()=>{this.closePanel();document.body.classList.add('hud-hidden');};$('save-project').onclick=()=>a.exportProject();$('open-project').onclick=()=>$('project-file').click();$('restore-save').onclick=()=>this.guard(async()=>{await a.importProject(JSON.parse(storageGet(SAVE_KEY)));this.closePanel();this.toast('Autosave restored.');});$('save-now').onclick=()=>this.toast(a.autosave()?'Saved in this browser.':'Browser storage is unavailable. Export a project instead.',!a.storageAvailable);}
  editorPanel(){const a=this.app;if(!this.draft||this.editorWorld!==a.world){this.draft=structuredClone(a.world.editor);this.editorWorld=a.world;this.editorUndo=[];this.editorRedo=[];this.newTrack=[];this.editorTool='inspect';}$('panel-content').innerHTML=`<p class="panel-intro">Place scenery, shape terrain, add stations, or draw your own closed railway. Edits are staged until you apply them. Applying changes pauses and safely repositions the train.</p><div class="editor-toolbar">${Object.keys(toolTip).map(id=>`<button class="secondary ${this.editorTool===id?'active':''}" data-tool="${id}">${{inspect:'Inspect',teleport:'Position train',tree:'Tree',building:'House',rock:'Rock',raise:'Raise',lower:'Lower',station:'Station',track:'Draw track',erase:'Erase'}[id]}</button>`).join('')}</div><div class="map-layout"><div class="large-map-wrap"><canvas id="large-map" class="large-map"></canvas><div class="map-legend" id="editor-tool-hint">${toolTip[this.editorTool]}</div></div><aside><label class="field"><span>World seed</span><input id="edit-seed" type="number" min="1" max="2147483647" value="${this.draft.seed}"></label>${this.field('Terrain brush radius','edit-radius',20,350,10,this.brushRadius||90,' m')}${this.field('Track node elevation','edit-elevation',5,500,1,this.nodeElevation||a.world.def.railY,' m')}${this.toggle('Overhead electrification','edit-wires',this.draft.electrified)}<button id="build-track" class="secondary">Build custom track (${this.newTrack.length} nodes)</button><p class="map-note">Each new node uses the selected elevation. Keep grades gentle and curves broad. Add four or more nodes at least 25 m apart.</p><button id="reset-track" class="secondary danger-button">Restore original railway</button></aside></div><div class="editor-footer"><button id="edit-undo" class="secondary" ${this.editorUndo.length?'':'disabled'}>Undo</button><button id="edit-redo" class="secondary" ${this.editorRedo.length?'':'disabled'}>Redo</button><button id="mobile-build-track" class="secondary">Build track (${this.newTrack.length})</button><span class="editor-status">${this.draft.objects.length} objects · ${this.draft.heightEdits.length} terrain edits · ${this.draft.stations.length} new stations</span><button id="edit-apply" class="primary">Apply world changes ${icon('arrow','icon small')}</button></div>`;
   document.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>{this.editorTool=b.dataset.tool;this.editorPanel();});this.bindRange('edit-radius',v=>this.brushRadius=v,v=>v+' m');this.bindRange('edit-elevation',v=>this.nodeElevation=v,v=>v+' m');$('edit-wires').onchange=e=>{this.editorCheckpoint();this.draft.electrified=e.target.checked;};$('edit-seed').onchange=e=>{this.editorCheckpoint();this.draft.seed=clamp(Number(e.target.value)||a.world.def.seed,1,2147483647);};const build=()=>this.guard(()=>{if(this.newTrack.length<4)throw new Error('Place at least four track nodes.');for(let i=0;i<this.newTrack.length;i++){const p=this.newTrack[i],q=this.newTrack[(i+1)%this.newTrack.length];if(Math.hypot(p.x-q.x,p.z-q.z)<25)throw new Error('Track nodes must be at least 25 m apart.');}this.editorCheckpoint();this.draft.customTrack=structuredClone(this.newTrack);this.draft.stations=[];this.newTrack=[];this.editorTool='inspect';this.editorPanel();this.toast('Custom route staged. Apply world changes to construct it.');});$('build-track').onclick=build;$('mobile-build-track').onclick=build;$('reset-track').onclick=()=>{this.editorCheckpoint();this.draft.customTrack=null;this.draft.stations=[];this.newTrack=[];this.editorPanel();};$('edit-undo').onclick=()=>{this.editorRedo.push(structuredClone(this.draft));this.draft=this.editorUndo.pop();this.editorPanel();};$('edit-redo').onclick=()=>{this.editorUndo.push(structuredClone(this.draft));this.draft=this.editorRedo.pop();this.editorPanel();};$('edit-apply').onclick=()=>this.guard(async()=>{const draft=structuredClone(this.draft);this.closePanel();await a.rebuildWorld(draft);this.draft=null;this.toast('Your world is ready.');});this.bindMap(true);this.drawMap($('large-map'),true);
  }
