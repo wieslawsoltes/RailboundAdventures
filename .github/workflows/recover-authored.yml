@@ -1,0 +1,43 @@
+name: Recover authored upgrade
+on:
+  push:
+    branches: [feat/authored-worlds-temporal]
+    paths: [.github/workflows/recover-authored.yml]
+permissions:
+  contents: read
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Recover exact source objects without executing them
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p recovered
+          python3 - <<'PY'
+          import urllib.request, os, json, base64, hashlib, pathlib, lzma, gzip, zlib
+          ids=['640c1f90db989d12a5ca51643ce067496abc32b9','8f1bc2676f1480fe47a566f23d1f93eb332883f4','aaf0fb8a6f27e5772986d74cfa43a9ef8b5be4af']
+          chunks=[]
+          for sha in ids:
+              req=urllib.request.Request(f'https://api.github.com/repos/{os.environ["GITHUB_REPOSITORY"]}/git/blobs/{sha}',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              obj=json.load(urllib.request.urlopen(req,timeout=30)); b=base64.b64decode(obj['content'])
+              assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()==sha
+              pathlib.Path('recovered/'+sha+'.bin').write_bytes(b); chunks.append(b)
+          raw=b''.join(chunks); pathlib.Path('recovered/combined.bin').write_bytes(raw)
+          print('Recovered lengths:',list(map(len,chunks)),'header:',raw[:16].hex())
+          for label,fn in [('xz',lzma.decompress),('gz',gzip.decompress),('zlib',zlib.decompress)]:
+              try:
+                  decoded=fn(raw); pathlib.Path('recovered/decoded.bin').write_bytes(decoded)
+                  print('Decoded',label,len(decoded),'bytes',repr(decoded[:160]));break
+              except Exception as e: print(label,type(e).__name__)
+          PY
+          git archive --format=tar.gz --output=recovered/current-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: recovered-authored-upgrade
+          path: recovered/
+          retention-days: 7
