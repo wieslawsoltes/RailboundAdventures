@@ -1,0 +1,39 @@
+name: WebGL no-float compatibility
+on:
+  push:
+    branches: [feat/material-lighting-fidelity]
+    paths: [.github/workflows/ldr-compatibility.yml]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ldr-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install test browser
+        run: |
+          python -m pip install playwright==1.62.0 pillow==11.3.0
+          python -m playwright install --with-deps chromium
+          sudo apt-get install -y xvfb libvulkan1 mesa-vulkan-drivers
+      - name: Exercise low-capability path with real scene and asset loading
+        run: |
+          python -m http.server 8000 --bind 127.0.0.1 >/tmp/ldr-http.log 2>&1 &
+          xvfb-run -a python -u tools/verify_ldr.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ldr-compatibility
+          path: ldr-results/
+          retention-days: 14

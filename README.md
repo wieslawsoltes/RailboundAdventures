@@ -1,5 +1,11 @@
 # Railbound Adventures
 
+## Material & Lighting Fidelity — v3.3
+
+Eight bundled CC0 material sets supply sRGB base color plus linear normal/roughness/occlusion maps. Near-field architecture adds matching window frames, shop awnings, ground-conforming paving and street furniture. The renderer adds three stabilized shadow ranges, half-resolution ambient contact shading, sky-specular response and view-dependent window-room parallax. Use **Display & immersion** to compare surface maps, normal mapping and contact shading.
+
+See [rendering and asset contracts](docs/FIDELITY.md). The standalone build embeds the maps; the module build serves them locally. No third-party runtime download, API key or renderer framework is required.
+
 ## Living Worlds — denser nature and coherent neighbourhoods
 
 Version 3.2 adds branch-and-leaf forest canopies, three vegetation LODs, streamed grass/ferns/wildflowers, connected street graphs, buildable parcels, parks, regional skylines and metre-scaled facade materials. See [Living Worlds architecture and validation](docs/LIVING-WORLDS.md). New regions are available from **Worlds → Survey & enter**.
@@ -21,9 +27,10 @@ Open **Worlds** to choose a seed, adjust relief, vegetation and erosion, then **
 An original, dependency-free browser railway sandbox and driving game. Native
 WebGPU rendering is implemented directly, with a WebGL 2 compatibility renderer.
 The simulation is driven by fixed-step train dynamics, not pre-scripted movement.
-All terrain, rolling stock, buildings, materials, vegetation and sounds are
-generated locally. No asset downloads, API keys, frameworks or backend services
-are required.
+Terrain, rolling stock, buildings, vegetation and sounds are generated locally.
+Eight CC0 surface-map pairs are bundled with the application, with source and
+derived hashes. No runtime CDN, API keys, renderer frameworks or backend
+services are required. Normal builds never contact the asset provider.
 
 ![Actual desktop render](docs/preview-desktop.png)
 

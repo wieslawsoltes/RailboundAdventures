@@ -1,6 +1,6 @@
 /* Railbound Adventures: same-origin, versioned offline app-shell cache. */
 'use strict';
-const CACHE = 'railbound-adventures-3.2.0-cinematic';
+const CACHE = 'railbound-adventures-3.3.0-fidelity';
 const BASE = new URL('./', self.location.href);
 const FILES = [
   './', 'index.html', 'styles/app.css', 'manifest.webmanifest',
@@ -11,7 +11,29 @@ const FILES = [
   'src/persistence.js', 'src/ui.js', 'src/main.js',
   'src/postprocess.js', 'src/cinematic-models.js', 'src/world-life.js', 'src/journey.js', 'src/cinematic-ui.js',
   'src/generation.js', 'src/generation-worker.js', 'src/generation-ui.js',
-  'src/world-detail.js', 'src/train-detail.js', 'src/botany.js', 'src/settlements.js', 'src/living-shaders.js', 'src/terrain-mesh.js'
+  'src/world-detail.js', 'src/train-detail.js', 'src/botany.js', 'src/settlements.js', 'src/living-shaders.js', 'src/terrain-mesh.js',
+  'src/urban-detail.js', 'src/materials.js',
+  'src/fidelity-shaders.js',
+  'src/shadow-cascades.js',
+  'src/contact-occlusion.js',
+  'assets/materials/Asphalt012-albedo.jpg',
+  'assets/materials/Asphalt012-surface.png',
+  'assets/materials/Bark006-albedo.jpg',
+  'assets/materials/Bark006-surface.png',
+  'assets/materials/Concrete034-albedo.jpg',
+  'assets/materials/Concrete034-surface.png',
+  'assets/materials/Gravel023-albedo.jpg',
+  'assets/materials/Gravel023-surface.png',
+  'assets/materials/Ground037-albedo.jpg',
+  'assets/materials/Ground037-surface.png',
+  'assets/materials/Ground048-albedo.jpg',
+  'assets/materials/Ground048-surface.png',
+  'assets/materials/LICENSE.txt',
+  'assets/materials/PavingStones036-albedo.jpg',
+  'assets/materials/PavingStones036-surface.png',
+  'assets/materials/Rock030-albedo.jpg',
+  'assets/materials/Rock030-surface.png',
+  'assets/materials/manifest.json'
 ].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));

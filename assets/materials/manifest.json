@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "size": 512,
+  "license": "CC0-1.0",
+  "licenseURL": "https://docs.ambientcg.com/license/",
+  "surfaceChannels": "R=normalX,G=normalY(OpenGL),B=roughness,A=occlusion",
+  "layers": [
+    {
+      "id": "Ground037",
+      "meters": 2.1,
+      "source": "https://ambientcg.com/a/Ground037",
+      "download": "https://ambientcg.com/get?file=Ground037_1K-JPG.zip",
+      "sourceSHA256": "4e69db2b7251b1736fa70fe6fe4ab80d64bd220117dd5dd4c7caaead51c2574e",
+      "albedo": "Ground037-albedo.jpg",
+      "surface": "Ground037-surface.png",
+      "sha256": {
+        "albedo": "307e9afa2374dbbbcb6ff92a4faa2c5a65a42cfd1a19d19da9a19132dc24f174",
+        "surface": "c465ac133312370ef34ca8345b6fdd2ceef5650048a544946df6fe81b30388a6"
+      }
+    },
+    {
+      "id": "Ground048",
+      "meters": 1.4,
+      "source": "https://ambientcg.com/a/Ground048",
+      "download": "https://ambientcg.com/get?file=Ground048_1K-JPG.zip",
+      "sourceSHA256": "3decfdd20e6c8f8c1ff02840cbd336922fca678e23987111af4bebb0a7a89c96",
+      "albedo": "Ground048-albedo.jpg",
+      "surface": "Ground048-surface.png",
+      "sha256": {
+        "albedo": "490c7b21bd5aacef12c5150afcee28b82babcff315849c6a569fbc1e14e92fdc",
+        "surface": "f7f2bfdebe9f9be245c0b7398a60ba69ae927c1f1c8e85b1890620475874d9cc"
+      }
+    },
+    {
+      "id": "Rock030",
+      "meters": 3.0,
+      "source": "https://ambientcg.com/a/Rock030",
+      "download": "https://ambientcg.com/get?file=Rock030_1K-JPG.zip",
+      "sourceSHA256": "2fd0bc2d214e2487c19062ed0798a85dd135b41cfc12bbaed42d5acae238f989",
+      "albedo": "Rock030-albedo.jpg",
+      "surface": "Rock030-surface.png",
+      "sha256": {
+        "albedo": "8b3c3fbb9057b434cfc71e5c9eadcb7b2bb9731649120fd21c1af335999b4b7a",
+        "surface": "b0a9325a5aa2d92f584c5cd1d167629933c6fb0f6faccb05b248dd80a39eb280"
+      }
+    },
+    {
+      "id": "Asphalt012",
+      "meters": 3.0,
+      "source": "https://ambientcg.com/a/Asphalt012",
+      "download": "https://ambientcg.com/get?file=Asphalt012_1K-JPG.zip",
+      "sourceSHA256": "c077e5d1b21a4333829bb655043ee6a45ddcf82fef850528f91f4305ac11193d",
+      "albedo": "Asphalt012-albedo.jpg",
+      "surface": "Asphalt012-surface.png",
+      "sha256": {
+        "albedo": "7c1d486a53076a8a393bc6451c198934f6700ae7fe815c7ba9ecb763580f76df",
+        "surface": "cf6f4bb04ed0c762cdb7a520ef64dd884001c356d9acef0768db741d852443d8"
+      }
+    },
+    {
+      "id": "PavingStones036",
+      "meters": 2.0,
+      "source": "https://ambientcg.com/a/PavingStones036",
+      "download": "https://ambientcg.com/get?file=PavingStones036_1K-JPG.zip",
+      "sourceSHA256": "91223aa46aa4275bb30df310fba788d8bfb740f2b1e9796ac0eb9a14f367e9ce",
+      "albedo": "PavingStones036-albedo.jpg",
+      "surface": "PavingStones036-surface.png",
+      "sha256": {
+        "albedo": "52e964fbebed052e859b54e79381379803d5d5b8063f68c27959e6116a36db2e",
+        "surface": "89236926072afc4776156b41fb8e0a93d38f30fa57b5bcac325528351b958293"
+      }
+    },
+    {
+      "id": "Bark006",
+      "meters": 1.0,
+      "source": "https://ambientcg.com/a/Bark006",
+      "download": "https://ambientcg.com/get?file=Bark006_1K-JPG.zip",
+      "sourceSHA256": "2eba78074c48f3c718d11b355e02b702ded71c2e2d191d34960f178ad917d3ab",
+      "albedo": "Bark006-albedo.jpg",
+      "surface": "Bark006-surface.png",
+      "sha256": {
+        "albedo": "854b4b44f6847c2608ddda80fa3d272b20a9d4e66fbf154704b7d4af5b96e841",
+        "surface": "7d6a32822cc51b6465bf381e7ca698c586907d4e91ca2bf76a3c616168a64c8c"
+      }
+    },
+    {
+      "id": "Gravel023",
+      "meters": 1.5,
+      "source": "https://ambientcg.com/a/Gravel023",
+      "download": "https://ambientcg.com/get?file=Gravel023_1K-JPG.zip",
+      "sourceSHA256": "a00e7fd6246db4ae228473aac14f1bc427bd93f228ebe347a5d6390dd838b0a8",
+      "albedo": "Gravel023-albedo.jpg",
+      "surface": "Gravel023-surface.png",
+      "sha256": {
+        "albedo": "ba0d26766507eba9297c2724c6dbf0cbb3bb1ea9e3e35040964012a8d98791ce",
+        "surface": "ca5ed2e1222c6f9c455c04ae61c1b61108697b61ffa712a9f748941addfdb274"
+      }
+    },
+    {
+      "id": "Concrete034",
+      "meters": 1.1,
+      "source": "https://ambientcg.com/a/Concrete034",
+      "download": "https://ambientcg.com/get?file=Concrete034_1K-JPG.zip",
+      "sourceSHA256": "5839d284d94ffb8d2a56df742ec522b13dd311c52dbd42b8fd33f0409ceedb81",
+      "albedo": "Concrete034-albedo.jpg",
+      "surface": "Concrete034-surface.png",
+      "sha256": {
+        "albedo": "2e8cdac786d1c285e4a2a9b4ee9ffbe79d6fc62f33530e80f364fcc345991f85",
+        "surface": "3c0b30284348a0a5c2d07dfe7715edad4fe0aa0fe4ace7ce72483b4885378dbb"
+      }
+    }
+  ]
+}

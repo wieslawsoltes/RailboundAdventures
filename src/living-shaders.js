@@ -42,14 +42,16 @@ export const MATERIAL_WGSL=/* wgsl */`
   let modern=v.props.z>.5;let margin=select(.19,.065,modern);
   let win=step(margin,cell.x)*step(cell.x,1.-margin)*step(.21,cell.y)*step(cell.y,.84)*step(abs(n.y),.5);
   let pane=step(.017,abs(cell.x-.5))*step(.013,abs(cell.y-.53));
-  let blinds=.62+.38*step(.07,fract(cell.y*14.));let seed=hash(room+floor(v.world.xz*.01)+vec2f(floor(v.props.w*4096.+.5)));
-  let interior=mix(vec3f(.028,.043,.039),vec3f(.15,.12,.074),step(.58,seed));
+  let blinds=.62+.38*step(.07,fract(cell.y*14.));let seed=hash(room+vec2f(floor(v.props.w*4096.+.5)));
+  let det=uvDx.x*uvDy.y-uvDx.y*uvDy.x;
+  let tangent=normalize((worldDx*uvDy.y-worldDy*uvDx.y)*sign(det+.0000001)+vec3f(.0000001,0,0));
+  let interior=roomRay((cell-vec2f(margin,.21))/vec2f(1.-2.*margin,.63),view,n,tangent,seed);
   let brick=fract(vec2f(v.uv.x*2.+floor(v.uv.y*5.)*.5,v.uv.y*5.));let mortar=1.-step(.055,min(brick.x,brick.y));
   let wall=col*(.90+noise(v.world.xz*3.+vec2f(v.world.y))*.12)*(1.-mortar*.16);
   col=mix(wall,interior*blinds,win);col=mix(col,vec3f(.035,.05,.052),win*(1.-pane));
   let cornice=1.-smoothstep(.025,.065,abs(cell.y-.985));col*=1.-cornice*.28;
   glassAmount=win*pane;rough=mix(.88,.18,glassAmount);metal=glassAmount*.18;
-  emissive=win*pane*step(.52,seed)*(1.-u.sunDay.w)*8.;
+  emissive=win*pane*step(.52,seed)*(1.-u.sunDay.w)*3.4;
  }
  if(kind>12.5&&kind<13.5){
   let grit=noise(v.world.xz*18.);let wear=noise(v.world.xz*.24);col*=.72+grit*.35+wear*.12;
@@ -64,10 +66,11 @@ export const MATERIAL_GLSL=/* glsl */`
  if(kind>11.5&&kind<12.5){
   emissive=0.;metal=0.;vec2 grid=uv/vec2(3.,3.2),cell=fract(grid),room=floor(grid);bool modern=props.z>.5;float margin=modern?.065:.19;
   float win=step(margin,cell.x)*step(cell.x,1.-margin)*step(.21,cell.y)*step(cell.y,.84)*step(abs(n.y),.5);
-  float pane=step(.017,abs(cell.x-.5))*step(.013,abs(cell.y-.53));float blinds=.62+.38*step(.07,fract(cell.y*14.)),seed=hash(room+floor(world.xz*.01)+vec2(floor(props.w*4096.+.5)));
-  vec3 interior=mix(vec3(.028,.043,.039),vec3(.15,.12,.074),step(.58,seed));vec2 brick=fract(vec2(uv.x*2.+floor(uv.y*5.)*.5,uv.y*5.));float mortar=1.-step(.055,min(brick.x,brick.y));
+  float pane=step(.017,abs(cell.x-.5))*step(.013,abs(cell.y-.53));float blinds=.62+.38*step(.07,fract(cell.y*14.)),seed=hash(room+vec2(floor(props.w*4096.+.5)));
+  float det=uvDx.x*uvDy.y-uvDx.y*uvDy.x;vec3 tangent=normalize((worldDx*uvDy.y-worldDy*uvDx.y)*sign(det+.0000001)+vec3(.0000001,0,0));
+  vec3 interior=roomRay((cell-vec2(margin,.21))/vec2(1.-2.*margin,.63),view,n,tangent,seed);vec2 brick=fract(vec2(uv.x*2.+floor(uv.y*5.)*.5,uv.y*5.));float mortar=1.-step(.055,min(brick.x,brick.y));
   vec3 wall=col*(.90+noise(world.xz*3.+world.y)*.12)*(1.-mortar*.16);col=mix(wall,interior*blinds,win);col=mix(col,vec3(.035,.05,.052),win*(1.-pane));
-  float cornice=1.-smoothstep(.025,.065,abs(cell.y-.985));col*=1.-cornice*.28;glassAmount=win*pane;rough=mix(.88,.18,glassAmount);metal=glassAmount*.18;emissive=win*pane*step(.52,seed)*(1.-u.sunDay.w)*8.;
+  float cornice=1.-smoothstep(.025,.065,abs(cell.y-.985));col*=1.-cornice*.28;glassAmount=win*pane;rough=mix(.88,.18,glassAmount);metal=glassAmount*.18;emissive=win*pane*step(.52,seed)*(1.-u.sunDay.w)*3.4;
  }
  if(kind>12.5&&kind<13.5){float grit=noise(world.xz*18.),wear=noise(world.xz*.24);col*=.72+grit*.35+wear*.12;float wet=u.env.y*(.4+.6*smoothstep(.35,.72,wear));rough=mix(.95,.2,wet);metal=.02;}
  if(kind>13.5&&kind<14.5){vec2 tile=fract(uv*vec2(2.,3.));float seam=1.-step(.07,min(tile.x,tile.y));col*=.92-seam*.22+noise(world.xz*2.)*.10;}

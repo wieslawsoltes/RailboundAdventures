@@ -1,3 +1,4 @@
+import {addArchitecturalDetail,buildPublicRealm} from './urban-detail.js';
 /** Parcel-based regional settlements. Road graph -> buildable lots -> architecture.
  * Streets and foundations sample the rendered terrain. Every lot reserves a
  * footprint; water, steep grades, rail clearance and overlaps are rejected.
@@ -88,7 +89,7 @@ function buildRoad(world,d,road,points){
  }
  const middle=points[Math.floor(points.length/2)],radius=d.pitch*.8;
  const asphalt=b.mesh(mesh.geometry(),middle,radius,[13,.92,0,0],ASPHALT);asphalt.maxDistance=3600;
- const walk=b.mesh(sidewalk.geometry(),middle,radius,[6,.92,0,0],PAVING);walk.maxDistance=2700;
+ const walk=b.mesh(sidewalk.geometry(),middle,radius,[16,.92,0,0],PAVING);walk.maxDistance=2700;
  for(const t of [.18,.75]){
   const p=ground(points[Math.floor((points.length-1)*t)],5.8,.13);
   const lamp=b.instance('cylinder',add(p,[0,3.3,0]),[.11,6.6,.11],STEEL);lamp.maxDistance=2600;
@@ -217,7 +218,7 @@ function building(world,d,p,width,depth,floors,style,seed){
  for(const tier of massing)for(const side of [-1,1])localPart(world,d,base,[side*(tier.width*.5+.075),tier.y+tier.height*.5,-tier.depth*.42],[.10,tier.height,.10],STEEL,[0,.6,.3,0]);
  if(floors<=4){localPart(world,d,base,[width*.22,height+2.3,-depth*.22],[.9,3.1,1.1],hex('#8d8376'),[12,.95,0,seed]);
   if(seed>.5)for(let k=0;k<3;k++)localPart(world,d,base,[-width*.23,height+width*.12+.5,(k-1)*2.1],[width*.32,.09,1.8],hex('#2b4654'),[3,.19,.5,0],'box',-.43);}
- d.buildings.push({position:base,width,depth,height,floors,style,tiers:massing.length});world.features.buildings++;return true;
+ const record={position:base,width,depth,height,floors,style,tiers:massing.length};d.buildings.push(record);addArchitecturalDetail(world,d,record,seed);world.features.buildings++;return true;
 }
 function garden(world,d,lot){
  const p=districtPoint(d,lot.cx,lot.cz),h=surface(world,p[0],p[2]);if(h<world.def.water+2)return;
@@ -266,5 +267,5 @@ export async function buildSettlements(world,onProgress=()=>{}){
   if(d.buildings.length){const center=d.buildings[Math.floor(d.buildings.length*.5)].position;world.viewpoints.push({name:`${d.name} streets`,position:add(center,mul(d.forward,85)).map((v,i)=>i===1?v+55:v),target:add(center,[0,8,0])});}
   onProgress('Laying streets, parcels & neighbourhoods',.59);await new Promise(resolve=>setTimeout(resolve,0));
  }
- world.features.districts=world.districts.filter(d=>d.buildings.length).length;
+ world.features.districts=world.districts.filter(d=>d.buildings.length).length;buildPublicRealm(world);
 }
