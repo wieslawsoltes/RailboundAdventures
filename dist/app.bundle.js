@@ -1,4 +1,50 @@
 'use strict';
+// ---- src/land-use.js ----
+const __m_src_land_use_js = (() => {
+
+/** Spatial reservations shared by vegetation and natural props.
+ * Station construction is independent of settlement districts. Reserve the actual
+ * track-aligned platform bays and rotated station kit, not an unrelated city box.
+ */
+const stationCache=new WeakMap();
+function rectangle(p,across,halfWidth,halfLength){
+ const length=Math.hypot(p.f[0],p.f[2]);
+ if(!Number.isFinite(length)||length<1e-8||!p.p.every(Number.isFinite))return null;
+ const fx=p.f[0]/length,fz=p.f[2]/length,rx=fz,rz=-fx;
+ return {x:p.p[0]+rx*across,z:p.p[2]+rz*across,fx,fz,rx,rz,halfWidth,halfLength};
+}
+function stationReservations(world){
+ if(!world||!world.network||!Array.isArray(world.stations))return [];
+ const cached=stationCache.get(world);
+ if(cached?.stations===world.stations&&cached.network===world.network)return cached.groups;
+ const groups=[];
+ for(const station of world.stations){
+  const edge=world.network.edges.get(station.edge);
+  if(!edge||!Number.isFinite(station.s)||!Number.isFinite(station.platform)||station.platform<=0)continue;
+  const bays=[],platform=Math.min(station.platform,2000);
+  // The platform geometry is emitted in seven-metre, track-aligned bays.
+  for(let ds=-platform;ds<14;ds+=7){const r=rectangle(edge.at(station.s+ds),4.7,3.7,4.5);if(r)bays.push(r);}
+  const building=rectangle(edge.at(station.s-92),17,7.3,19.2);if(building)bays.push(building);
+  if(!bays.length)continue;
+  const group={minX:Infinity,maxX:-Infinity,minZ:Infinity,maxZ:-Infinity,bays};
+  for(const r of bays){const ex=Math.abs(r.rx)*r.halfWidth+Math.abs(r.fx)*r.halfLength,ez=Math.abs(r.rz)*r.halfWidth+Math.abs(r.fz)*r.halfLength;
+   group.minX=Math.min(group.minX,r.x-ex);group.maxX=Math.max(group.maxX,r.x+ex);group.minZ=Math.min(group.minZ,r.z-ez);group.maxZ=Math.max(group.maxZ,r.z+ez);Object.freeze(r);}
+  Object.freeze(bays);groups.push(Object.freeze(group));
+ }
+ Object.freeze(groups);stationCache.set(world,{network:world.network,stations:world.stations,groups});return groups;
+}
+function stationLandUse(world,x,z,padding=0){
+ if(!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(padding)||padding<0)return false;
+ for(const group of stationReservations(world)){
+  if(x<group.minX-padding||x>group.maxX+padding||z<group.minZ-padding||z>group.maxZ+padding)continue;
+  for(const r of group.bays){const dx=x-r.x,dz=z-r.z;
+   if(Math.abs(dx*r.rx+dz*r.rz)<=r.halfWidth+padding&&Math.abs(dx*r.fx+dz*r.fz)<=r.halfLength+padding)return true;}
+ }
+ return false;
+}
+
+return {stationReservations,stationLandUse};
+})();
 // ---- src/materials.js ----
 const __m_src_materials_js = (() => {
 
@@ -194,9 +240,11 @@ return {Geometry,MeshBuilder,boxGeometry,cylinderGeometry,sphereGeometry,pineFar
 })();
 // ---- src/authored-assets.js ----
 const __m_src_authored_assets_js = (() => {
+const {stationLandUse} = __m_src_land_use_js;
 const {SurfaceLibrary} = __m_src_materials_js;
 const {Geometry,PRIMITIVES,Batch} = __m_src_geometry_js;
 const {rng,hash2,clamp,transform} = __m_src_math_js;
+
 /** Curated CC0 art: immutable geometry and independently owned GPU texture arrays.
  * A failed art download never prevents driving: the procedural scene remains usable.
  */
@@ -265,7 +313,7 @@ class AuthoredLibrary extends SurfaceLibrary {
 }
 function authoredSite(world,x,z,radius=1){
  if(!Number.isFinite(x+z+radius)||radius<=0)return null;
- const f=world.terrain;if(!f)return null;
+ const f=world.terrain;if(!f||stationLandUse(world,x,z,radius))return null;
  const centre=world.surfaceHeight(x,z),low=world.def.water+(.18);
  if(!Number.isFinite(centre)||centre<low)return null;
  const rail=world.network.nearest(x,z,60);if(rail&&rail.distance<radius+4.2)return null;
@@ -314,9 +362,11 @@ return {AUTHORED_IDS,AUTHORED_MODELS,AUTHORED_STATE,validateAuthoredManifest,dec
 })();
 // ---- src/botany.js ----
 const __m_src_botany_js = (() => {
+const {stationLandUse} = __m_src_land_use_js;
 const {AUTHORED_STATE} = __m_src_authored_assets_js;
 const {Geometry,MeshBuilder,Batch,PRIMITIVES} = __m_src_geometry_js;
 const {rng,hash2,noise2,hex,clamp,smooth,add,sub,mul,norm,cross,transform,TAU} = __m_src_math_js;
+
 
 /** Living Worlds: deterministic, instanced botany with shared near/mid/far meshes.
  * Compound-leaf cards use same-origin authored cutouts with an analytic fallback.
@@ -435,6 +485,7 @@ function addLivingTree(world,p,height,variation=.5,species=null){
  world.forest.add(p,height,species,variation);
 }
 function urbanLandUse(world,x,z){
+ if(stationLandUse(world,x,z,1))return true;
  for(const d of world.districts||[]){const dx=x-d.origin[0],dz=z-d.origin[2],lx=dx*d.right[0]+dz*d.right[2],lz=dx*d.forward[0]+dz*d.forward[2];
   if(lx>d.minX-8&&lx<d.maxX+8&&lz>d.minZ-8&&lz<d.maxZ+8)return true;}
  return false;
@@ -476,7 +527,6 @@ async function buildLivingForest(world,onProgress=()=>{}){
   if(++count%4000===0)await new Promise(resolve=>setTimeout(resolve,0));
  }
  world.features.forestCandidates=sites.offered;world.features.trees+=count;world.features.forestTrees=count;world.features.botanyRevision=BOTANY_REVISION;
- // Fallen timber, mossy outcrops and patches of young woodland follow the corridor.
  let understory=0,edgeIndex=0;
  for(const edge of world.network.edges.values()){
  const corridor=edgeIndex++;
@@ -523,7 +573,6 @@ class GroundCover {
   const batches=new Map(),cell=40,step=quality==='low'?5:quality==='medium'?3.8:2.8;let instances=0;
   for(let j=0;j<14;j++)for(let i=0;i<14;i++){
    const r=rng((Math.imul(tx*14+i,73856093)^Math.imul(tz*14+j,19349663)^world.seed)>>>0);
-   // Fixed 14x14 candidate grid; nested hash threshold avoids reshuffling grass.
    const px=tx*cell+(i+.15+r()*.7)*cell/14,pz=tz*cell+(j+.15+r()*.7)*cell/14,accept=r();
    if(accept>(2.8/step)**2*Math.min(1,world.terrain?.options?.vegetation??1)||urbanLandUse(world,px,pz)||world.network.nearest(px,pz,7.2))continue;
    const raw=world.baseHeight(px,pz),f=world.terrain;if(raw<world.def.water+.5||raw>world.def.snowLine||!f)continue;
