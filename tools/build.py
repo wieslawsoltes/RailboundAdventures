@@ -30,6 +30,23 @@ def bundle(entry='src/main.js'):
     visit(ROOT / entry)
     return "'use strict';\n" + '\n'.join(output)
 
+def embedded_materials():
+    directory = ROOT / 'assets/materials'
+    manifest = json.loads((directory / 'manifest.json').read_text())
+    data = {'manifest': manifest}
+    for layer in manifest['layers']:
+        for kind in ('albedo', 'surface'):
+            name = layer[kind]
+            if not re.fullmatch(r'[A-Za-z0-9-]+\.(jpg|png)', name):
+                raise ValueError('Invalid material path')
+            raw = (directory / name).read_bytes()
+            import hashlib
+            if hashlib.sha256(raw).hexdigest() != layer['sha256'][kind]:
+                raise ValueError('Material checksum mismatch: ' + name)
+            mime = 'image/jpeg' if name.endswith('.jpg') else 'image/png'
+            data[name] = 'data:' + mime + ';base64,' + base64.b64encode(raw).decode('ascii')
+    return 'globalThis.RAILBOUND_MATERIAL_ASSETS=' + json.dumps(data, separators=(',', ':')).replace('<', '\\u003c') + ';\n'
+
 if __name__ == '__main__':
     script = bundle()
     html = (ROOT / 'index.html').read_text()
@@ -39,7 +56,7 @@ if __name__ == '__main__':
     icon = ROOT / 'assets/icon.svg'
     if icon.exists():
         html = html.replace('assets/icon.svg', 'data:image/svg+xml;base64,' + base64.b64encode(icon.read_bytes()).decode())
-    html = html.replace('<script type="module" src="src/main.js"></script>', '<script>globalThis.RAILBOUND_STANDALONE=true;\n' + script.replace('</script', '<\\/script') + '\n</script>')
+    html = html.replace('<script type="module" src="src/main.js"></script>', '<script>globalThis.RAILBOUND_STANDALONE=true;\n' + embedded_materials() + script.replace('</script', '<\\/script') + '\n</script>')
     out = ROOT.parent / 'Railbound-Adventures.html'
     out.write_text(html)
     (ROOT / 'dist').mkdir(exist_ok=True)
