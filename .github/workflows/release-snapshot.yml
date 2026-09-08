@@ -1,0 +1,21 @@
+name: Release review source snapshot
+on:
+  push:
+    branches: [feat/material-lighting-fidelity]
+    paths: [.github/workflows/release-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - run: git archive --format=tar.gz --output=release-source.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-source
+          path: release-source.tar.gz
+          retention-days: 7
