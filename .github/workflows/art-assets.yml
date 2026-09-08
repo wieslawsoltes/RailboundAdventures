@@ -1,0 +1,69 @@
+name: Acquire authored natural assets
+on:
+  push:
+    branches: [feat/authored-worlds-temporal]
+    paths: [.github/workflows/art-assets.yml]
+permissions:
+  contents: read
+jobs:
+  acquire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Download curated source assets from the documented public API
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, urllib.request, urllib.parse, time
+          root=pathlib.Path('asset-sources');root.mkdir()
+          provenance=[];total=0
+          def get(url,limit=80000000,expected=None):
+              global total
+              assert urllib.parse.urlparse(url).scheme=='https'
+              assert urllib.parse.urlparse(url).hostname in ['api.polyhaven.com','dl.polyhaven.org','cdn.polyhaven.com']
+              request=urllib.request.Request(url,headers={'User-Agent':'RailboundAdventures-AuthoredAssets/1.0','Referer':'https://github.com/wieslawsoltes/RailboundAdventures'})
+              with urllib.request.urlopen(request,timeout=90) as response:
+                  data=response.read(limit+1)
+              assert len(data)<=limit, 'Source exceeds acquisition budget'
+              total+=len(data);assert total<200000000
+              if expected and expected.get('md5'):
+                  assert hashlib.md5(data).hexdigest()==expected['md5']
+              provenance.append({'url':url,'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()})
+              return data
+          for asset in ['rock_moss_set_01','tree_stump_02','fern_02']:
+              directory=root/asset;directory.mkdir()
+              meta=json.loads(get('https://api.polyhaven.com/files/'+asset,2000000))
+              (directory/'files.json').write_text(json.dumps(meta,indent=2))
+              desc=meta['gltf']['1k']['gltf']
+              source=get(desc['url'],2000000,desc)
+              path=directory/(asset+'.gltf');path.write_bytes(source)
+              model=json.loads(source);include=desc.get('include',{})
+              for uri in dict.fromkeys(x['uri'] for x in model.get('buffers',[])+model.get('images',[]) if 'uri' in x):
+                  relative=pathlib.PurePosixPath(uri)
+                  assert not relative.is_absolute() and '..' not in relative.parts
+                  record=include.get(uri)
+                  if not record:
+                      record=next((v for k,v in include.items() if k.endswith('/'+uri) or pathlib.PurePosixPath(k).name==relative.name),None)
+                  url=record['url'] if record else urllib.parse.urljoin(desc['url'],uri)
+                  target=directory/relative;target.parent.mkdir(parents=True,exist_ok=True)
+                  target.write_bytes(get(url,80000000,record))
+              print(asset, 'meshes',len(model.get('meshes',[])),'materials',len(model.get('materials',[])),flush=True)
+          asset='pine_tree_01';directory=root/asset;directory.mkdir()
+          meta=json.loads(get('https://api.polyhaven.com/files/'+asset,2000000));(directory/'files.json').write_text(json.dumps(meta,indent=2))
+          for name in ['twig_diff','twig_alpha','twig_nor_gl','twig_arm']:
+              variants=meta[name]['1k'];kind='png' if 'png' in variants else 'jpg';record=variants[kind]
+              (directory/(name+'.'+kind)).write_bytes(get(record['url'],12000000,record))
+          (root/'provenance.json').write_text(json.dumps({'license':'CC0-1.0','licenseURL':'https://polyhaven.com/license','source':'Poly Haven; original artists credited in final asset manifest','files':provenance},indent=2))
+          print('Total acquisition bytes',total)
+          PY
+      - name: Archive original sources for offline conversion
+        if: always()
+        run: tar -czf asset-sources.tar.gz asset-sources
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: authored-asset-sources
+          path: asset-sources.tar.gz
+          retention-days: 7
