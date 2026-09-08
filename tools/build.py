@@ -47,6 +47,23 @@ def embedded_materials():
             data[name] = 'data:' + mime + ';base64,' + base64.b64encode(raw).decode('ascii')
     return 'globalThis.RAILBOUND_MATERIAL_ASSETS=' + json.dumps(data, separators=(',', ':')).replace('<', '\\u003c') + ';\n'
 
+def embedded_authored():
+    import hashlib
+    directory=ROOT/'assets/authored'
+    manifest=json.loads((directory/'manifest.json').read_text())
+    data={'manifest':manifest}
+    for layer in manifest['layers']:
+        for kind in ('albedo','surface'):
+            name=layer[kind]
+            if not re.fullmatch(r'[a-z0-9-]+\.png',name):raise ValueError('Invalid authored path')
+            raw=(directory/name).read_bytes()
+            if hashlib.sha256(raw).hexdigest()!=layer['sha256'][kind]:raise ValueError('Authored map checksum')
+            data[name]='data:image/png;base64,'+base64.b64encode(raw).decode('ascii')
+    raw=(directory/'hero-meshes.bin').read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=manifest['meshHash']:raise ValueError('Authored mesh checksum')
+    data['hero-meshes.bin']='data:application/octet-stream;base64,'+base64.b64encode(raw).decode('ascii')
+    return 'globalThis.RAILBOUND_AUTHORED_ASSETS='+json.dumps(data,separators=(',',':')).replace('<','\\u003c')+';\n'
+
 if __name__ == '__main__':
     script = bundle()
     html = (ROOT / 'index.html').read_text()
@@ -56,7 +73,7 @@ if __name__ == '__main__':
     icon = ROOT / 'assets/icon.svg'
     if icon.exists():
         html = html.replace('assets/icon.svg', 'data:image/svg+xml;base64,' + base64.b64encode(icon.read_bytes()).decode())
-    html = html.replace('<script type="module" src="src/main.js"></script>', '<script>globalThis.RAILBOUND_STANDALONE=true;\n' + embedded_materials() + script.replace('</script', '<\\/script') + '\n</script>')
+    html = html.replace('<script type="module" src="src/main.js"></script>', '<script>globalThis.RAILBOUND_STANDALONE=true;\n' + embedded_materials() + embedded_authored() + script.replace('</script', '<\\/script') + '\n</script>')
     out = ROOT.parent / 'Railbound-Adventures.html'
     out.write_text(html)
     (ROOT / 'dist').mkdir(exist_ok=True)

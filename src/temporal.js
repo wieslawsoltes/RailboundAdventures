@@ -36,6 +36,13 @@ fn rgb(c:vec3f)->vec3f{return vec3f(c.x+c.y-c.z,c.x+c.z,c.x-c.y-c.z);}
  let previousPixel=clamp(vec2i(previousUV*vec2f(size)),vec2i(0),size-1);
  let oldDepth=textureLoad(history,previousPixel,0).a;let expected=length(world-u.previousCamera.xyz);
  if(oldDepth<.01||abs(oldDepth-expected)>max(.12,expected*.003)){return vec4f(now,storedDepth);}
+ // Reject every contributing bilinear tap, not only the nearest history pixel.
+ // Otherwise a moving train can leak into an adjacent static pixel at silhouettes.
+ let corner=vec2i(floor(previousUV*vec2f(size)-vec2f(.5)));
+ for(var hy=0;hy<2;hy++){for(var hx=0;hx<2;hx++){
+  let hd=textureLoad(history,clamp(corner+vec2i(hx,hy),vec2i(0),size-1),0).a;
+  if(hd<.01||abs(hd-expected)>max(.12,expected*.003)){return vec4f(now,storedDepth);}
+ }}
  var low=vec3f(1e10);var high=vec3f(-1e10);var mean=vec3f(0);var square=vec3f(0);
  for(var y=-1;y<=1;y++){for(var x=-1;x<=1;x++){
   let c=yc(textureLoad(current,clamp(pixel+vec2i(x,y),vec2i(0),size-1),0).rgb);
@@ -62,6 +69,11 @@ void main(){
  if(any(lessThan(previousUV,vec2(0)))||any(greaterThan(previousUV,vec2(1))))return;
  float oldDepth=texelFetch(history,clamp(ivec2(previousUV*vec2(size)),ivec2(0),size-1),0).a,expected=length(world-previousCamera.xyz);
  if(oldDepth<.01||abs(oldDepth-expected)>max(.12,expected*.003))return;
+ ivec2 corner=ivec2(floor(previousUV*vec2(size)-vec2(.5)));
+ for(int hy=0;hy<2;hy++)for(int hx=0;hx<2;hx++){
+  float hd=texelFetch(history,clamp(corner+ivec2(hx,hy),ivec2(0),size-1),0).a;
+  if(hd<.01||abs(hd-expected)>max(.12,expected*.003))return;
+ }
  vec3 low=vec3(1e10),high=vec3(-1e10),mean=vec3(0),square=vec3(0);
  for(int y=-1;y<=1;y++)for(int x=-1;x<=1;x++){vec3 c=yc(texelFetch(current,clamp(pixel+ivec2(x,y),ivec2(0),size-1),0).rgb);low=min(low,c);high=max(high,c);mean+=c;square+=c*c;}
  mean/=9.;vec3 sigma=sqrt(max(vec3(0),square/9.-mean*mean));vec3 old=yc(texture(history,previousUV).rgb),clipped=clamp(old,max(low,mean-sigma*1.5),min(high,mean+sigma*1.5));
@@ -81,7 +93,7 @@ export class TemporalResolve {
  invalidate(reason='explicit'){this.valid=false;this.sample=0;this.resetCount++;this.reason=reason;}
  release(){if(this.history.length)this.resourceRevision++;for(const target of this.history){if(this.device)target.destroy();else{this.gl.deleteTexture(target.texture);this.gl.deleteFramebuffer(target.fb);}}this.history=[];this.groups=null;this.width=0;this.height=0;this.invalidate('targets');}
  resize(width,height,scene,geometry){
-  if(width===this.width&&height===this.height&&this.scene===scene)return;
+  if(width===this.width&&height===this.height&&this.scene===scene&&this.geometry===geometry)return;
   this.release();this.width=width;this.height=height;this.scene=scene;this.geometry=geometry;this.write=0;
   for(let i=0;i<2;i++){
    if(this.device)this.history.push(this.device.createTexture({label:'Temporal history '+i,size:[width,height],format:'rgba16float',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.RENDER_ATTACHMENT}));
@@ -95,7 +107,7 @@ export class TemporalResolve {
   this.passCount=0;this.active=enabled;
   if(!enabled){if(this.history.length)this.release();this.valid=false;return [0,0];}
   this.resize(renderer.width,renderer.height,post.scene,post.geometry);
-  const signature=[world.id,env.weather,Math.round(env.hour*8),renderer.settings.shadows,renderer.settings.surfaces,renderer.settings.normalMapping].join('|');
+  const signature=[world.id,env.weather,Math.round(env.hour*8),renderer.settings.quality,renderer.settings.shadows,renderer.settings.surfaces,renderer.settings.normalMapping].join('|');
   const state={mode:camera.mode,fov:camera.fov||56,position:camera.position.slice(),direction:norm(sub(camera.target,camera.position))};
   if(this.sceneKey!==sceneKey||this.signature!==signature||temporalCameraCut(this.previousState,state))this.invalidate('camera/environment/scene');
   this.sceneKey=sceneKey;this.signature=signature;this.pendingState=state;this.pendingVP=unjitteredVP.slice();
