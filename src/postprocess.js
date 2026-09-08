@@ -169,7 +169,7 @@ export class PostProcessor {
   if(source!==this.scene){if(!this.groupCache.has(source))this.groupCache.set(source,{extract:this.makeGroup(source,source),composite:this.makeGroup(source,this.a)});Object.assign(this.groups,this.groupCache.get(source));}
   else{if(!this.groupCache.has(source))this.groupCache.set(source,{extract:this.makeGroup(source,source),composite:this.makeGroup(source,this.a)});Object.assign(this.groups,this.groupCache.get(source));}
   this.update(env,time,quality);this.device.queue.writeBuffer(this.uniform,0,this.frame);this.passCount=0;
-  const pass=(name,view)=>{const p=encoder.beginRenderPass({label:'Post '+name,colorAttachments:[{view,loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});p.setPipeline(this.pipelines[name]);p.setBindGroup(0,group=this.groups[name]);p.draw(3);p.end();this.passCount++;};
+  const pass=(name,view)=>{const p=encoder.beginRenderPass({label:'Post '+name,colorAttachments:[{view,loadOp:'clear',storeOp:'store',clearValue:{r:0,g:0,b:0,a:1}}]});p.setPipeline(this.pipelines[name]);p.setBindGroup(0,this.groups[name]);p.draw(3);p.end();this.passCount++;};
   if(this.bloomActive){pass('extract',this.a.createView());pass('blurH',this.b.createView());pass('blurV',this.a.createView());}
   pass('composite',output);
  }
