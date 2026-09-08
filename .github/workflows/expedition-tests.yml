@@ -11,7 +11,8 @@ concurrency:
 jobs:
   browser:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # The suite visits eight regions and six train families on a software GPU.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
