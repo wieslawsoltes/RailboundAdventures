@@ -64,3 +64,54 @@ test('ground cover stays out of water, railway and street parcels',()=>{
 test('offline precache includes all Living Worlds dependencies',()=>{
  const source=readFileSync(new URL('../sw.js',import.meta.url),'utf8');for(const module of ['botany','settlements','living-shaders'])assert.ok(source.includes(`src/${module}.js`));
 });
+
+// A hard tree budget must not erase the last rows of a large world.
+test('forest cap is bounded, spatially distributed and independent of scan order',async()=>{
+ const {ForestReservoir}=await import('../src/botany.js');const sites=Array.from({length:1000},(_,i)=>({i,z:i-500}));
+ const a=new ForestReservoir(100),b=new ForestReservoir(100);const priority=i=>(((i*73856093)^9827)>>>0)/4294967296;
+ for(const site of sites)a.offer(site,priority(site.i));for(const site of sites.toReversed())b.offer(site,priority(site.i));
+ assert.equal(a.heap.length,100);assert.equal(a.offered,1000);assert.deepEqual(a.sites(),b.sites());
+ assert.ok(a.sites().some(s=>s.z>400)&&a.sites().some(s=>s.z< -400));
+});
+
+test('oriented footprints reject shared space across rotated districts',async()=>{
+ const {footprintsOverlap}=await import('../src/settlements.js');
+ const a={center:[0,0],half:[10,6],axes:[[1,0],[0,1]]};const b={center:[1,2],half:[10,6],axes:[[.707,.707],[-.707,.707]]};
+ assert.equal(footprintsOverlap(a,b),true);b.center=[50,50];assert.equal(footprintsOverlap(a,b),false);
+});
+test('adjacent district planning cannot duplicate buildings or build across another street',async()=>{
+ const {footprintsOverlap}=await import('../src/settlements.js');const w=stub();w.stations.push({...w.stations[0],name:'Adjacent district'});await buildSettlements(w);
+ for(let i=0;i<w.cityFootprints.length;i++){
+  for(const road of w.streetFootprints)assert.equal(footprintsOverlap(w.cityFootprints[i],road),false);
+  for(let j=i+1;j<w.cityFootprints.length;j++)assert.equal(footprintsOverlap(w.cityFootprints[i],w.cityFootprints[j]),false);
+ }
+ assert.equal(w.features.roadSegments,planSettlements(stub())[0].roads.length);
+});
+
+test('stepped towers remain within parcel and every tier is vertically connected',async()=>{
+ const {buildingMassing}=await import('../src/settlements.js');
+ for(const seed of [0,.27,.99]){const tiers=buildingMassing(19,22,24,'glass',seed);assert.equal(tiers.length,3);let top=0;
+  for(const t of tiers){assert.equal(t.y,top);assert.ok(t.height>0&&t.width<=19&&t.depth<=22);top+=t.height;}assert.ok(Math.abs(top-24*3.2)<1e-9);assert.ok(tiers[2].width<tiers[1].width);
+ }assert.equal(buildingMassing(12,17,3,'alpine',.4).length,1);
+});
+test('parked sedan and estate use cached closed silhouettes and finite material geometry',async()=>{
+ const {parkedVehicleArchetype}=await import('../src/settlements.js');
+ for(const estate of [false,true]){const parts=parkedVehicleArchetype(estate);assert.equal(parts,parkedVehicleArchetype(estate));assert.equal(parts.length,6);
+  for(const {geometry:g} of parts){assert.ok(g.vertices.every(Number.isFinite));assert.ok(g.indices.length>0);assert.ok(g.indices.every(i=>i<g.vertices.length/8));}
+ }assert.notDeepEqual(parkedVehicleArchetype(false)[0].geometry.vertices,parkedVehicleArchetype(true)[0].geometry.vertices);
+});
+test('room lighting seed and instance properties cannot vary smoothly across a facade',()=>{
+ const source=readFileSync(new URL('../src/living-shaders.js',import.meta.url),'utf8');
+ assert.ok(source.includes('floor(v.props.w*4096.+.5)'));assert.ok(source.includes('floor(props.w*4096.+.5)'));
+ assert.ok(WGSL_MAIN.includes('@interpolate(flat) props'));assert.ok(GLSL_SHADOW_FS.includes('flat in vec4 props'));
+});
+
+
+test('ecological density controls corridor understory, not just distant canopy',async()=>{
+ const {buildLivingForest}=await import('../src/botany.js');const counts=[];
+ for(const density of [.25,1,1.7]){const w=stub();Object.assign(w.def,{rx:4,rz:4,rock:"#73796b"});
+  w.terrain.options={vegetation:density};w.terrain.profile={spacing:20,forest:0};
+  w.network.edges=new Map([['corridor',{length:1600,at:s=>({p:[s,5,0],right:[0,0,1]})}]]);
+  await buildLivingForest(w);counts.push(w.features.shrubs);
+ }assert.ok(counts[0]<counts[1]&&counts[1]<counts[2],JSON.stringify(counts));
+});

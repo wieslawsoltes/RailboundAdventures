@@ -5,8 +5,9 @@
 import {Geometry,MeshBuilder,Batch,PRIMITIVES} from './geometry.js';
 import {rng,hash2,noise2,hex,clamp,smooth,add,sub,mul,norm,cross,transform,TAU} from './math.js';
 export const BOTANY_REVISION=1;
+export const FOREST_CELL=320;
 export const SPECIES=['fir','oak','birch','cherry','pine'];
-const palettes={fir:['#3e6542','#597b48'],pine:['#536e43','#749053'],oak:['#668344','#8b9d50'],birch:['#8caa57','#728d44'],cherry:['#dfb6bd','#c799a7']};
+const palettes={fir:['#315642','#466746'],pine:['#38583f','#557248'],oak:['#42633e','#687e46'],birch:['#62814a','#507040'],cherry:['#cfabb4','#b88899']};
 const cached=new Map();
 function tube(b,a,c,r0,r1,sides=7){
  const axis=norm(sub(c,a)),right=norm(cross(axis,Math.abs(axis[1])>.95?[1,0,0]:[0,1,0])),up=cross(right,axis);
@@ -50,11 +51,11 @@ export function treeArchetype(species='fir',variant=0,lod=0){
    const a=i*2.399+variant,y=.42+(i%4)*.085,extent=(birch?.18:.27)*(.7+r()*.5);
    const root=[lean*y,y,tip[2]*y],end=[Math.cos(a)*extent+lean,y+.20+r()*.13,Math.sin(a)*extent];
    if(lod<2)tube(wood,root,end,.008,.002,lod===0?7:5);
-   const leaves=lod===0?22:lod===1?8:4;
+   const leaves=lod===0?56:lod===1?8:4;
    for(let k=0;k<leaves;k++){
     const theta=r()*TAU,v=r()*2-1,rad=Math.pow(r(),.4)*(birch?.12:.17);
     const p=add(end,[Math.cos(theta)*Math.sqrt(1-v*v)*rad,v*rad*.8,Math.sin(theta)*Math.sqrt(1-v*v)*rad]);
-    const size=lod===0?.065+r()*.045:lod===1?.15:.23;
+    const size=lod===0?.036+r()*.026:lod===1?.15:.23;
     clusters.push({p,scale:size,angle:r()*TAU,tilt:(r()-.5)*2.5});
    }
   }
@@ -68,7 +69,7 @@ export class ForestBuilder {
  constructor(builder){this.builder=builder;this.cells=new Map();this.treeCount=0;}
  add(p,height,species,variation=0){
   if(!Number.isFinite(height)||height<=0||!p.every(Number.isFinite))return;
-  const variant=variation>.5?1:0,cx=Math.floor(p[0]/192),cz=Math.floor(p[2]/192),palette=palettes[species]||palettes.fir;
+  const variant=variation>.5?1:0,cx=Math.floor(p[0]/FOREST_CELL),cz=Math.floor(p[2]/FOREST_CELL),palette=palettes[species]||palettes.fir;
   const color=hex(palette[variant]),wood=hex(species==='birch'?'#c9c7b1':'#6e604b'),yaw=variation*TAU;
   const matrix=transform(p,[height,height,height],yaw);
   for(let lod=0;lod<3;lod++){
@@ -77,8 +78,8 @@ export class ForestBuilder {
     if(lod===2&&role==='wood')continue;
     const key=`${cx},${cz},${species},${variant},${lod},${role}`;
     let batch=this.cells.get(key);
-    if(!batch){batch=new Batch(model[role],{center:[cx*192+96,p[1]+height*.5,cz*192+96],radius:180,maxDistance:5800,castShadow:lod<2});
-     batch.lodNear=lod===0?420:lod===1?1300:0;batch.lodFar=lod===0?0:lod===1?420:1300;
+    if(!batch){batch=new Batch(model[role],{center:[(cx+.5)*FOREST_CELL,p[1]+height*.5,(cz+.5)*FOREST_CELL],radius:FOREST_CELL*.8,maxDistance:5800,castShadow:lod<2});
+     batch.lodNear=lod===0?280:lod===1?1300:0;batch.lodFar=lod===0?0:lod===1?280:1300;
      batch.cutout=role==='leaf';batch.detailClass='forest';this.cells.set(key,batch);this.builder.batches.push(batch);}
     batch.radius=Math.max(batch.radius,Math.hypot(p[0]-batch.center[0],p[1]+height*.5-batch.center[1],p[2]-batch.center[2])+height*.65);
     batch.add(matrix,role==='leaf'?color:wood,role==='leaf'?[11,.86,species==='fir'||species==='pine'?1:0,variation]:[15,.94,0,0]);
@@ -102,9 +103,21 @@ function plantCactus(world,p,height,variation){
  const b=world.builder,color=hex('#788762');b.instance('cylinder',add(p,[0,height*.5,0]),[.55,height,.55],color,[6,.9,0,0]);b.instance('sphere',add(p,[0,height,0]),[.55,.55,.55],color);
  for(const side of [-1,1]){const y=height*(side<0?.42:.62),x=side*(.7+variation*.45);b.segment(add(p,[0,y,0]),add(p,[x,y,0]),.35,color);b.instance('cylinder',add(p,[x,y+height*.14,0]),[.35,height*.28,.35],color);b.instance('sphere',add(p,[x,y+height*.28,0]),[.35,.35,.35],color);}
 }
+/** Bounded, scan-order-independent top-K sampling. Every accepted site receives
+ * an independent priority; reaching the population budget never clips a map edge.
+ */
+export class ForestReservoir {
+ constructor(capacity=70000){this.capacity=Math.max(0,Math.min(70000,capacity|0));this.heap=[];this.offered=0;}
+ offer(site,priority){
+  if(!Number.isFinite(priority)||!this.capacity)return;this.offered++;const h=this.heap,node={site,priority};
+  if(h.length<this.capacity){h.push(node);let i=h.length-1;while(i){const p=(i-1)>>1;if(h[p].priority>=priority)break;h[i]=h[p];i=p;}h[i]=node;return;}
+  if(priority>=h[0].priority)return;let i=0;while(i*2+1<h.length){let j=i*2+1;if(j+1<h.length&&h[j+1].priority>h[j].priority)j++;if(h[j].priority<=priority)break;h[i]=h[j];i=j;}h[i]=node;
+ }
+ sites(){return this.heap.slice().sort((a,b)=>a.priority-b.priority).map(n=>n.site);}
+}
 export async function buildLivingForest(world,onProgress=()=>{}){
  const f=world.terrain,w=world.def,span=Math.max(w.rx,w.rz)*2.05,spacing=f.profile.spacing*.58;
- let row=0,count=0;
+ let row=0,count=0;const sites=new ForestReservoir();
  for(let z=-span;z<span;z+=spacing){for(let x=-span;x<span;x+=spacing){
   const ix=Math.floor(x/spacing),iz=Math.floor(z/spacing),v=hash2(ix,iz,world.seed+7);
   const px=x+spacing*(.12+.76*hash2(ix,iz,world.seed+11)),pz=z+spacing*(.12+.76*hash2(ix,iz,world.seed+19));
@@ -114,21 +127,29 @@ export async function buildLivingForest(world,onProgress=()=>{}){
   const c=f.climate(px,pz,h);if(c.slope>.76||world.network.nearest(px,pz,11))continue;
   const p=[px,(world.surfaceHeight?.(px,pz)??world.height(px,pz))-.08,pz],variation=hash2(ix,iz,world.seed+61);
   const height=(10+variation*15)*(1-smooth(w.snowLine-130,w.snowLine+30,h)*.48);
-  if(w.theme==='canyon'){if(v>.032)continue;if(variation>.35)plantCactus(world,p,height*.25,variation);else addLivingTree(world,p,height*.32,variation,'pine');}
+  if(w.theme==='canyon'&&v>.032)continue;
+  sites.offer({p,height,variation},hash2(ix,iz,world.seed+13817));
+ }if(++row%24===0){onProgress('Growing layered woodland',.74+.10*(z+span)/(2*span));await new Promise(resolve=>setTimeout(resolve,0));}}
+ for(const site of sites.sites()){const {p,height,variation}=site;
+  if(w.theme==='canyon'){if(variation>.35)plantCactus(world,p,height*.25,variation);else addLivingTree(world,p,height*.32,variation,'pine');}
   else addLivingTree(world,p,height,variation);
-  count++;if(count>=70000)break;
- }if(count>=70000)break;if(++row%24===0){onProgress('Growing layered woodland',.74+.10*(z+span)/(2*span));await new Promise(resolve=>setTimeout(resolve,0));}}
- world.features.trees+=count;world.features.forestTrees=count;world.features.botanyRevision=BOTANY_REVISION;
+  if(++count%4000===0)await new Promise(resolve=>setTimeout(resolve,0));
+ }
+ world.features.forestCandidates=sites.offered;world.features.trees+=count;world.features.forestTrees=count;world.features.botanyRevision=BOTANY_REVISION;
  // Fallen timber, mossy outcrops and patches of young woodland follow the corridor.
- const r=rng(world.seed^0x703fa20);let understory=0;
- for(const edge of world.network.edges.values())for(let s=0;s<edge.length;s+=11){
+ let understory=0,edgeIndex=0;
+ for(const edge of world.network.edges.values()){
+ const corridor=edgeIndex++;
+ for(let s=0,index=0;s<edge.length;s+=6.5,index++){
+  if(hash2(index,corridor,world.seed+9017)>clamp(f.options.vegetation,.25,1.7)/1.7)continue;
+  const r=rng((hash2(index,corridor,world.seed+9037)*4294967296)>>>0);
   const pose=edge.at(s),offset=(r()>.5?1:-1)*(18+r()*170),p=add(pose.p,mul(pose.right,offset));
   const h=world.baseHeight(p[0],p[2]);if(h<w.water+2||h>w.snowLine||urbanLandUse(world,p[0],p[2])||world.network.nearest(p[0],p[2],9))continue;
   const c=f.climate(p[0],p[2],h);if(c.slope>.64)continue;p[1]=world.surfaceHeight?.(p[0],p[2])??world.height(p[0],p[2]);
   if(r()>.15&&w.theme!=='canyon'){addLivingTree(world,p,1.4+r()*3.4,r(),w.theme==='highland'?'cherry':'oak');understory++;}
   else if(r()>.4){const batch=world.builder.instance('boulder',add(p,[0,.35,0]),[2+r()*4,1+r()*2,2+r()*4],hex(w.rock),[6,.96,0,0],r()*TAU);batch.maxDistance=1300;}
   else if(w.theme!=='canyon'){const end=add(p,[3+r()*4,.25,r()*2]);world.builder.segment(add(p,[0,.35,0]),end,.4,hex('#63533f'),[15,.98,0,0]);}
- }
+ }}
  world.features.shrubs+=understory;world.features.ecosystemSeed=world.seed;
 }
 function meadowGeometry(){

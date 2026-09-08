@@ -111,22 +111,95 @@ function gable(world,d,p,width,depth,height,color){
  const geom=m.geometry();for(let i=0;i<geom.vertices.length;i+=8){const x=geom.vertices[i],y=geom.vertices[i+1],z0=geom.vertices[i+2];geom.vertices[i]=base[0]*x+base[8]*z0+base[12];geom.vertices[i+1]=y+p[1];geom.vertices[i+2]=base[2]*x+base[10]*z0+base[14];const nx=geom.vertices[i+3],nz=geom.vertices[i+5];geom.vertices[i+3]=base[0]*nx+base[8]*nz;geom.vertices[i+5]=base[2]*nx+base[10]*nz;geom.vertices[i+6]=x;geom.vertices[i+7]=z0;}
  world.builder.mesh(geom,add(p,[0,height,0]),Math.hypot(width,depth)+rise,[14,.9,0,0],color).maxDistance=3200;
 }
+/** Planar oriented footprint test (four separating axes), shared across districts. */
+export function footprintsOverlap(a,b){
+ const axes=[...a.axes,...b.axes],dx=b.center[0]-a.center[0],dz=b.center[1]-a.center[1];
+ for(const [x,z] of axes){const radius=q=>q.half[0]*Math.abs(x*q.axes[0][0]+z*q.axes[0][1])+q.half[1]*Math.abs(x*q.axes[1][0]+z*q.axes[1][1]);
+  if(Math.abs(dx*x+dz*z)>=radius(a)+radius(b))return false;
+ }return true;
+}
+function rectangle(p,width,depth,yaw){return {center:[p[0],p[2]],half:[width*.5,depth*.5],axes:[[Math.cos(yaw),-Math.sin(yaw)],[Math.sin(yaw),Math.cos(yaw)]]};}
+/** Tiered massing keeps upper volumes inside the validated footprint. */
+export function buildingMassing(width,depth,floors,style,seed){
+ const height=floors*3.2;
+ if(style!=='glass'||floors<9)return [{y:0,height,width,depth}];
+ const podium=3*3.2,shoulder=Math.floor(floors*(.66+seed*.09))*3.2;
+ return [{y:0,height:podium,width,depth},
+  {y:podium,height:shoulder-podium,width:width*.88,depth:depth*.90},
+  {y:shoulder,height:height-shoulder,width:width*(.62+seed*.10),depth:depth*.72}];
+}
+
+/** Shared curbside vehicle silhouettes. No per-vehicle mesh allocations. */
+const vehicleCache=new Map();
+export function parkedVehicleArchetype(estate=false){
+ const key=estate?'estate':'sedan';if(vehicleCache.has(key))return vehicleCache.get(key);
+ const groups=Object.fromEntries(['paint','glass','rubber','chrome','lamps','tail'].map(k=>[k,new MeshBuilder()]));
+ const append=(role,name,p,scale,roll=0)=>{
+  const mesh=groups[role],g=PRIMITIVES[name],m=transform(p,scale,0,0,roll),start=mesh.v.length/8;
+  for(let i=0;i<g.vertices.length;i+=8){const v=g.vertices,x=v[i],y=v[i+1],z=v[i+2],nx=v[i+3]/scale[0],ny=v[i+4]/scale[1],nz=v[i+5]/scale[2];
+   const n=norm([nx*Math.cos(roll)-ny*Math.sin(roll),nx*Math.sin(roll)+ny*Math.cos(roll),nz]);
+   mesh.vertex([m[0]*x+m[4]*y+m[8]*z+m[12],m[1]*x+m[5]*y+m[9]*z+m[13],m[2]*x+m[6]*y+m[10]*z+m[14]],n,[v[i+6],v[i+7]]);
+  }for(const i of g.indices)mesh.i.push(start+i);
+ };
+ const profiles=[[-2.2,.76,.58],[-1.95,.90,.75],[-1.24,.94,.85],[.64,.94,.85],[1.66,.85,.67],[2.2,.69,.55]];
+ const ring=([z,w,h])=>[[-w*.82,.27,z],[w*.82,.27,z],[w,.37,z],[w,h-.10,z],[w*.86,h,z],[-w*.86,h,z],[-w,h-.10,z],[-w,.37,z]];
+ const rings=profiles.map(ring),body=groups.paint;
+ for(let j=0;j<rings.length-1;j++)for(let i=0;i<8;i++)body.quad(rings[j][i],rings[j][(i+1)%8],rings[j+1][(i+1)%8],rings[j+1][i]);
+ for(const end of [0,rings.length-1])for(let i=1;i<7;i++)body.tri(rings[end][0],rings[end][i],rings[end][i+1]);
+ const rear=estate?-1.6:-.78,back=estate?-1.90:-1.36;
+ // Sloping front/rear screens, a painted roof, and two side windows.
+ groups.glass.quad([-.74,.88,.69],[.74,.88,.69],[.65,1.43,.12],[-.65,1.43,.12]);
+ groups.glass.quad([.72,.87,back],[-.72,.87,back],[-.65,1.43,rear],[.65,1.43,rear]);
+ groups.paint.quad([-.65,1.44,rear],[-.65,1.44,.12],[.65,1.44,.12],[.65,1.44,rear]);
+ for(const side of [-1,1]){
+  groups.glass.quad([side*.76,.88,back],[side*.76,.88,.69],[side*.65,1.43,.12],[side*.65,1.43,rear]);
+  append('rubber','box',[side*.705,1.15,-.27],[.10,.60,.105]);
+  append('paint','box',[side*.98,.96,.50],[.19,.13,.25]);
+  for(const z of [-1.40,1.37]){
+   append('rubber','cylinder',[side*.87,.35,z],[.69,.22,.69],Math.PI*.5);
+   append('chrome','cylinder',[side*1.00,.35,z],[.39,.04,.39],Math.PI*.5);
+  }
+  for(const z of [-.85,.18])append('chrome','box',[side*.943,.81,z],[.027,.043,.17]);
+  append('lamps','box',[side*.54,.55,2.16],[.43,.115,.10]);
+  append('tail','box',[side*.58,.60,-2.14],[.35,.12,.10]);
+ }
+ append('rubber','box',[0,.38,2.20],[1.10,.16,.04]);append('chrome','box',[0,.41,-2.22],[.38,.14,.02]);
+ const parts=[];for(const [role,builder] of Object.entries(groups)){const name=`street-car-${key}-${role}`,geometry=builder.geometry();PRIMITIVES[name]=geometry;parts.push({role,name,geometry});}
+ vehicleCache.set(key,parts);return parts;
+}
+function streetCar(world,p,yaw,seed){
+ const paints=['#747f82','#384c60','#837962','#a7aaa5','#814a42'];const tint=hex(paints[seed%paints.length]);
+ const colors={paint:tint,glass:hex('#34454c'),rubber:hex('#272b2b'),chrome:hex('#9ca5a4'),lamps:hex('#e5e1c7'),tail:hex('#922f29')};
+ for(const part of parkedVehicleArchetype(seed%3===0)){
+  const props=part.role==='glass'?[3,.18,.35,0]:part.role==='paint'?[0,.28,.35,0]:part.role==='chrome'?[0,.25,.75,0]:[0,.72,0,0];
+  const b=world.builder.instance(part.name,p,[1,1,1],colors[part.role],props,yaw);b.maxDistance=1900;
+ }
+}
 function building(world,d,p,width,depth,floors,style,seed){
+ const bounds=rectangle(p,width+1,depth+3,d.yaw);
+ if((world.cityFootprints||[]).some(q=>footprintsOverlap(bounds,q))||(world.streetFootprints||[]).some(q=>footprintsOverlap(bounds,q)))return false;
  const pad=footprint(world,p,width+1,depth+1,d.yaw);if(!pad)return false;
+ (world.cityFootprints??=[]).push(bounds);
  const b=world.builder,height=floors*3.2,base=[p[0],pad.high+.12,p[2]],palette=WALLS[Math.floor(seed*WALLS.length)%WALLS.length],color=hex(palette);
  localPart(world,d,base,[0,(pad.low-pad.high)/2-.3,0],[width+.5,pad.high-pad.low+.6,depth+.5],hex('#87877d'),[6,.97,0,0]);
  world.features.foundations=(world.features.foundations||0)+1;
- const facade=localPart(world,d,base,[0,height*.5,0],[width,height,depth],color,[12,.85,style==='glass'?1:0,seed]);facade.maxDistance=5500;
+ const massing=buildingMassing(width,depth,floors,style,seed);
+ for(const tier of massing){
+  const facade=localPart(world,d,base,[0,tier.y+tier.height*.5,0],[tier.width,tier.height,tier.depth],color,[12,.85,style==='glass'?1:0,seed]);facade.maxDistance=5500;
+  localPart(world,d,base,[0,tier.y+tier.height+.03,0],[tier.width+.24,.15,tier.depth+.24],hex('#858a85'),[14,.90,0,0]);
+ }
+ if(massing.length>1)world.features.steppedTowers=(world.features.steppedTowers||0)+1;
+ const roofWidth=massing.at(-1).width,roofDepth=massing.at(-1).depth;
  const roof=hex(style==='alpine'||style==='nordic'?'#535d5d':style==='stone'?'#6a6a63':style==='compact'?'#5c6369':'#866e5e');
  if(floors<=4&&style!=='glass'&&style!=='desert')gable(world,d,base,width,depth,height,roof);
  else{
-  localPart(world,d,base,[0,height+.12,0],[width+.45,.24,depth+.45],hex('#8d938f'),[14,.92,0,0]);
+  localPart(world,d,base,[0,height+.12,0],[roofWidth+.45,.24,roofDepth+.45],hex('#8d938f'),[14,.92,0,0]);
   for(const side of [-1,1]){
-   localPart(world,d,base,[side*width*.5,height+.5,0],[.2,.75,depth+.2],color,[6,.92,0,0]);
-   localPart(world,d,base,[0,height+.5,side*depth*.5],[width,.75,.2],color,[6,.92,0,0]);
+   localPart(world,d,base,[side*roofWidth*.5,height+.5,0],[.2,.75,roofDepth+.2],color,[6,.92,0,0]);
+   localPart(world,d,base,[0,height+.5,side*roofDepth*.5],[roofWidth,.75,.2],color,[6,.92,0,0]);
   }
-  localPart(world,d,base,[width*.20,height+1,0],[width*.30,1.4,depth*.28],hex('#777f80'),[6,.78,.3,0]);
-  for(let j=0;j<3;j++)localPart(world,d,base,[width*.20,height+1.72,(j-1)*depth*.07],[width*.19,.07,.13],STEEL,[0,.4,.6,0]);
+  localPart(world,d,base,[roofWidth*.20,height+1,0],[roofWidth*.30,1.4,roofDepth*.28],hex('#777f80'),[6,.78,.3,0]);
+  for(let j=0;j<3;j++)localPart(world,d,base,[roofWidth*.20,height+1.72,(j-1)*roofDepth*.07],[roofWidth*.19,.07,.13],STEEL,[0,.4,.6,0]);
  }
  // Storefront and entry: the opening faces the parcel's access lane.
  localPart(world,d,base,[0,1.2,depth*.5+.06],[1.7,2.4,.13],hex('#263a3c'),[3,.2,.2,0]);
@@ -141,10 +214,10 @@ function building(world,d,p,width,depth,floors,style,seed){
   }
  }
  // Corner drainpipes, chimney, and roof solar panels form recognisable silhouettes.
- for(const side of [-1,1])localPart(world,d,base,[side*(width*.5+.075),height*.48,-depth*.42],[.10,height*.96,.10],STEEL,[0,.6,.3,0]);
+ for(const tier of massing)for(const side of [-1,1])localPart(world,d,base,[side*(tier.width*.5+.075),tier.y+tier.height*.5,-tier.depth*.42],[.10,tier.height,.10],STEEL,[0,.6,.3,0]);
  if(floors<=4){localPart(world,d,base,[width*.22,height+2.3,-depth*.22],[.9,3.1,1.1],hex('#8d8376'),[12,.95,0,seed]);
   if(seed>.5)for(let k=0;k<3;k++)localPart(world,d,base,[-width*.23,height+width*.12+.5,(k-1)*2.1],[width*.32,.09,1.8],hex('#2b4654'),[3,.19,.5,0],'box',-.43);}
- d.buildings.push({position:base,width,depth,height,floors,style});world.features.buildings++;return true;
+ d.buildings.push({position:base,width,depth,height,floors,style,tiers:massing.length});world.features.buildings++;return true;
 }
 function garden(world,d,lot){
  const p=districtPoint(d,lot.cx,lot.cz),h=surface(world,p[0],p[2]);if(h<world.def.water+2)return;
@@ -159,9 +232,17 @@ function garden(world,d,lot){
 }
 export async function buildSettlements(world,onProgress=()=>{}){
  world.districts=world.districts||planSettlements(world);world.features.cityRevision=CITY_REVISION;
+ world.cityFootprints=[];world.streetFootprints=[];const streetKeys=new Set(),plans=[];
+ // Reserve every street before placing any building, including adjacent districts.
  for(const d of world.districts){
   const candidates=new Map();for(let i=0;i<d.roads.length;i++){const points=roadSamples(world,d,d.roads[i]);if(points)candidates.set(i,points);}
-  const connected=connectedRoads(d.roads,candidates),valid=new Set(connected.keys());for(const [i,points] of connected){d.roads[i].built=true;buildRoad(world,d,d.roads[i],points);}
+  const connected=connectedRoads(d.roads,candidates),valid=new Set(connected.keys());plans.push({d,valid});
+  for(const [i,points] of connected){d.roads[i].built=true;const a=points[0],b=points.at(-1),key=[a,b].map(p=>[p[0],p[2]].map(v=>v.toFixed(2)).join(',')).sort().join('|');
+   if(streetKeys.has(key))continue;streetKeys.add(key);buildRoad(world,d,d.roads[i],points);
+   const mid=mul(add(a,b),.5),yaw=Math.atan2(b[0]-a[0],b[2]-a[2]);world.streetFootprints.push(rectangle(mid,14.6,Math.hypot(b[0]-a[0],b[2]-a[2])+14.6,yaw));
+  }
+ }
+ for(const {d,valid} of plans){
   for(const lot of d.lots){
    // Reject landlocked parcels: at least one of their four frontages must exist.
    const {col,row}=lot,first=(d.rows+1)*d.cols;
@@ -180,7 +261,7 @@ export async function buildSettlements(world,onProgress=()=>{}){
   // Parked vehicles occupy curbside bays, not random positions amongst buildings.
   for(let i=0;i<d.roads.length;i+=3){const road=d.roads[i];if(!road.built)continue;
    const x=(road.a[0]+road.b[0])*.5+(road.axis==='z'?3.1:0),z=(road.a[1]+road.b[1])*.5+(road.axis==='x'?3.1:0),p=districtPoint(d,x,z);p[1]=surface(world,p[0],p[2])+.18;
-   world.buildCar(p,d.yaw+(road.axis==='x'?Math.PI*.5:0),i);world.features.parkedCars=(world.features.parkedCars||0)+1;
+   streetCar(world,p,d.yaw+(road.axis==='x'?Math.PI*.5:0),i);world.features.parkedCars=(world.features.parkedCars||0)+1;
   }
   if(d.buildings.length){const center=d.buildings[Math.floor(d.buildings.length*.5)].position;world.viewpoints.push({name:`${d.name} streets`,position:add(center,mul(d.forward,85)).map((v,i)=>i===1?v+55:v),target:add(center,[0,8,0])});}
   onProgress('Laying streets, parcels & neighbourhoods',.59);await new Promise(resolve=>setTimeout(resolve,0));

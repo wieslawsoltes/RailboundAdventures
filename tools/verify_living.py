@@ -51,9 +51,15 @@ with sync_playwright() as p:
    page.evaluate("railbound.camera.setMode('chase');railbound.camera.initial=true")
    render(page,region+'-driving')
    if region=='pine':
-    page.evaluate('''()=>{const a=railbound,candidates=a.world.batches.filter(b=>b.cutout&&b.lodNear===420&&b.count>8);
-     const b=candidates.sort((x,y)=>y.count-x.count)[0];const x=b.data[12],z=b.data[14];const h=a.world.surfaceHeight(x,z);
-     a.camera.position=[x+16,h+9,z+24];a.camera.target=[x,h+7,z];a.camera.setMode('free');a.camera.fov=62;}''')
+    woodland=page.evaluate('''()=>{const a=railbound,w=a.world,candidates=w.batches.filter(b=>b.cutout&&b.lodNear>0&&b.lodNear<400&&b.count>8);let best=null;
+     for(const b of candidates)for(let i=0;i<b.count;i+=Math.max(1,Math.floor(b.count/12))){const x=b.data[i*24+12],z=b.data[i*24+14],h=w.surfaceHeight(x,z);
+      const terrain=[w.surfaceHeight(x+18,z+24),w.surfaceHeight(x+9,z+12),w.surfaceHeight(x-10,z-10)];
+      const relief=Math.max(h,...terrain)-Math.min(h,...terrain);if(relief>7||h<w.def.water+5)continue;
+      const rank=b.count-relief*12;if(!best||rank>best.rank)best={x,z,h,terrain,rank};}
+     if(!best)throw new Error('No safe woodland photo site');const {x,z,h,terrain}=best;
+     a.camera.position=[x+18,Math.max(h+6.5,terrain[0]+5),z+24];a.camera.target=[x,h+8,z];a.camera.setMode('free');a.camera.fov=62;
+     return {clearance:a.camera.position[1]-w.surfaceHeight(a.camera.position[0],a.camera.position[2]),rank:best.rank};}''')
+    check('woodland review camera above rendered terrain',woodland['clearance']>=4.9,woodland)
     first,stats=render(page,'pine-woodland');check('camera-local understory is populated',stats['cover']>100,stats)
     page.evaluate('railbound.simTime+=3.5');second,_=render(page,'pine-wind');check('wind changes foliage pixels',ImageChops.difference(first,second).getbbox() is not None)
     counts=page.evaluate('''()=>{const a=railbound;const high=a.groundCover.visibleInstances;

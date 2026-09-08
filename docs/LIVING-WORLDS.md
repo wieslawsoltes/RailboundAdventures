@@ -56,9 +56,9 @@ existing analytical sky model, not screen-space or ray-traced reflections.
 
 ## Performance and limits
 
-Trees are instanced into 192-metre cells by species, variant, role and LOD, with
+Trees are instanced into 320-metre cells by species, variant, role and LOD, with
 shared geometry and bounded per-world tree count (70,000 canopy trees before
-corridor detail). Fine canopy detail ends at 420 metres, middle detail at 1,300
+corridor detail). Fine canopy detail ends at 280 metres, middle detail at 1,300
 metres; quality scales those thresholds. The wider far-tree distance provides
 wooded horizons. Ground cover has bounded radius, tile count and generation work.
 City windows are shader detail rather than one draw call per window.
@@ -87,3 +87,11 @@ The implementation is original. Relevant public technical references:
 - WebGPU specification, multisample state: https://gpuweb.github.io/gpuweb/#dictdef-gpumultisamplestate
 - GPU Gems 2, *Toward Photorealism in Virtual Botany*: https://developer.nvidia.com/gpugems/gpugems2/part-i-geometric-complexity/chapter-1-toward-photorealism-virtual-botany
 - GPU Gems, *Rendering Countless Blades of Waving Grass*: https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-7-rendering-countless-blades-waving-grass
+
+The 70,000-canopy-tree budget uses independent site priorities and a bounded max-heap. It samples across the whole region rather than stopping at the first 70,000 trees in scan order. Forest instance cells are 320 metres wide to reduce submission overhead without changing individual trees.
+
+Street reservations are computed for all districts before buildings are emitted. A planar separating-axis test excludes overlapping building footprints and buildings on any district street, not only their own parcel. Coincident street spans are deduplicated.
+
+Visual review refinements use smaller, more numerous near-field leaflets, darker regional foliage palettes, flat-interpolated instance material IDs, and quantized room-light seeds so tiny interpolation error cannot produce shimmering window pixels. Close-up browser captures explicitly verify camera clearance against rendered triangles.
+
+Corridor understory uses a fixed 6.5-metre candidate lattice with independent hashed site priorities; ecological density thins the same sites from 25 to 170 percent instead of keeping the full near-track budget at low density.
