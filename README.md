@@ -1,210 +1,142 @@
 # Railbound Adventures
 
-## Material & Lighting Fidelity — v3.3
-
-Eight bundled CC0 material sets supply sRGB base color plus linear normal/roughness/occlusion maps. Near-field architecture adds matching window frames, shop awnings, ground-conforming paving and street furniture. The renderer adds three stabilized shadow ranges, half-resolution ambient contact shading, sky-specular response and view-dependent window-room parallax. Use **Display & immersion** to compare surface maps, normal mapping and contact shading.
-
-See [rendering and asset contracts](docs/FIDELITY.md). The standalone build embeds the maps; the module build serves them locally. No third-party runtime download, API key or renderer framework is required.
-
-## Living Worlds — denser nature and coherent neighbourhoods
-
-Version 3.2 adds branch-and-leaf forest canopies, three vegetation LODs, streamed grass/ferns/wildflowers, connected street graphs, buildable parcels, parks, regional skylines and metre-scaled facade materials. See [Living Worlds architecture and validation](docs/LIVING-WORLDS.md). New regions are available from **Worlds → Survey & enter**.
-
-## Cinematic Journeys
-
-Version 3.1 adds linear HDR rendering, soft bloom, four display looks, an interactive photo studio, a route-based driving coach and saved journey telemetry. Terrain-grounded foundations and aligned viaduct spans address visible world defects; the Velocity 320 gains a smooth lofted nose with surface glazing. Scenic bird flocks, shoreline foam, northern night lighting and layered synthesized rail audio add atmosphere. Display, wildlife, sound and reduced-motion controls are optional.
-
-Use **Studio / F2** for photo mode or **Journey** for route guidance. See [Cinematic architecture, controls and validation](docs/CINEMATIC-JOURNEYS.md) for the rendering contract and explicit boundaries.
-
-## Expeditions: procedural worlds and detailed trains
-
-Version 3 replaces the shared circular geography with eight seeded regional terrain models, erosion, drainage-aware ecology, surveyed asymmetric routes, regional landmarks and scenic viewpoints. Trains gain cached mechanical assemblies, detailed wheel profiles, suspension, roof equipment and cab geometry with distance-based detail levels. Existing version-2 saves keep their original geography.
-
-Open **Worlds** to choose a seed, adjust relief, vegetation and erosion, then **Survey & enter**. See [Expedition architecture, controls and validation](docs/EXPEDITIONS.md) for implementation details and explicit boundaries.
-
 **[Play in your browser](https://wieslawsoltes.github.io/RailboundAdventures/)** · [Deployment workflow](https://github.com/wieslawsoltes/RailboundAdventures/actions/workflows/pages.yml)
 
-An original, dependency-free browser railway sandbox and driving game. Native
-WebGPU rendering is implemented directly, with a WebGL 2 compatibility renderer.
-The simulation is driven by fixed-step train dynamics, not pre-scripted movement.
-Terrain, rolling stock, buildings, vegetation and sounds are generated locally.
-Eight CC0 surface-map pairs are bundled with the application, with source and
-derived hashes. No runtime CDN, API keys, renderer frameworks or backend
-services are required. Normal builds never contact the asset provider.
+A browser railway sandbox and driving game in plain HTML, CSS and JavaScript.
+The renderer uses WebGPU directly, with a WebGL 2 compatibility path. Train physics
+runs at fixed 60 Hz; movement, brakes, gradients and controls are simulated rather
+than scripted. Runtime libraries and third-party CDNs are not required.
 
-![Actual desktop render](docs/preview-desktop.png)
+## Art & Motion — 3.4
 
-## Run
+This upgrade adds a curated CC0 library of six mossy rocks, a stump and four fern
+models with three levels of detail each. Pine-twig imagery improves nearby conifer
+foliage. Source and derived hashes, artist credits and conversion settings are
+included. The assets are served locally and embedded in the standalone game.
 
-**Single file:** open `dist/index.html` in a browser. The separately supplied
-`Railbound-Adventures.html` is the same self-contained build. Some mobile file
-previewers do not execute HTML applications; use an actual browser and a local or
-HTTPS static server instead.
+Stations gain curved platform canopies, structural trusses, purlins, columns,
+regional wings and glazed concourses. Coaches gain smooth manufactured shells,
+rounded window seals and glazing while retaining working doors, wheels and controls.
 
-**Source modules, recommended for development:**
+High/Ultra HDR adds camera-reprojected temporal antialiasing with variance clipping,
+reactive-object rejection and two explicitly owned history targets. Low/Medium and
+WebGL without floating-point render targets retain spatial rendering. Use
+**Display & immersion → Temporal antialiasing** to toggle it. Camera-only temporal AA
+is not per-object motion vectors, temporal upscaling or a guarantee against every
+foliage artifact.
 
-```sh
-cd railbound-adventures
-python3 -m http.server 8000 --bind 127.0.0.1
-```
+[Art, memory, rendering and build contracts](docs/ART-AND-MOTION.md)
 
-Open `http://localhost:8000`. On Windows, `run.bat` uses the Python launcher or
-`python`; on macOS/Linux, `sh run.sh` starts the same server. Python is only a
-convenient static server, not part of the game runtime. Node.js is optional and
-only used by the test commands.
-
-The renderer prefers WebGPU where an adapter and compatible secure context are
-available. Otherwise it attempts WebGL 2. Use HTTPS for a remotely accessed or
-mobile-hosted deployment. Plain HTTP to a computer's LAN IP does not generally
-qualify as a secure WebGPU origin. Localhost is treated differently. See the
-[MDN WebGPU reference](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API)
-and [secure-context guide](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts).
-
-The source-root deployment includes a manifest and versioned service worker for
-offline app-shell caching after an initial successful visit. The standalone HTML
-has no service-worker dependency. Browser storage is optional: project files can
-be exported even when localStorage is unavailable.
-
-## First departure
-
-Press **Begin your journey**. This closes the doors, switches on the master,
-raises the pantograph, selects forward, releases the brakes and applies moderate
-power. Brake pressure takes time to recharge. Adjust power with **W/S** and the
-train brake with **D/A**, or use the two large touch sliders. Drag the scene to
-look around; scroll or pinch to zoom. **C** cycles six cameras; **1** selects the
-cab. **Space** applies the emergency brake.
-
-The tools on the right open Worlds, Fleet, Environment, Map, Dispatch, World
-Editor and Setup. The instrument deck opens the advanced locomotive controls.
-Setup also contains save/import, graphics quality, train recovery and units.
-The in-game help lists all controls. See [docs/CONTROLS.md](docs/CONTROLS.md).
-
-## Included systems
-
-| Area | Implemented behavior |
-| --- | --- |
-| Railway | Arc-length sampled Catmull-Rom track; main circuit and selectable branch; 1.435 m visual gauge; sleepers, ballast, bridges, overhead wires and platforms. |
-| Train dynamics | Fixed 60 Hz integration; consist mass; force- and power-limited traction; gradient and drag; wheel adhesion, wheel slip and sanding; progressive air-brake pressure; dynamic, independent, parking and emergency brakes; reverse and rollback. |
-| Locomotive controls | Master, reverser, throttle, brakes, doors, pantograph, lights, wipers, horn, fuel/water and simplified steam fire/boiler controls. Traction and door interlocks affect movement. |
-| Traffic | 400 m occupancy blocks; red/yellow/green signals; manual signal holds; turnout approach locking; AI services with station stops; automatic speed/signal protection; train-contact detection and recovery. |
-| Play | Free roam, passenger calls, freight delivery and a precision-driving challenge; station alignment, 20-second boarding dwell, scores and stop logs. Precision uses the passenger-service engine, not a separate career system. |
-| World control | Eight seeded route themes; six weather settings; editable hour, time rate and exposure; scenery placement; terrain brushes; station placement; custom closed-loop track nodes; electrification and seed; staged undo/redo. |
-| Fleet control | Six original train families; configurable consist size and resulting mass; stop-only stock changes; AI creation/removal/takeover; stopped-train repositioning on clear track. |
-| Rendering | Procedural terrain and materials; sun/sky/clouds/stars; directional shadow mapping; glass and water sky reflections; headlights and emissive windows; vegetation LOD, instancing and frustum/distance culling; weather and steam particles. |
-| Cameras/input | Cab, chase, orbit, aerial, trackside and free flight; keyboard/mouse, touch drag/pinch and standard gamepad mapping; responsive portrait/landscape HUD. |
-| Persistence | Validated JSON projects; browser autosaves; route/editor, train, pressure, controls, traffic holds, camera, weather and mission progress restoration. |
-| Audio | Procedural motor, rolling noise and horn through Web Audio, enabled by user interaction. |
-
-## Worlds
-
-The locations and railway layouts are fictional, geographically inspired
-procedural environments, not surveyed reproductions or downloadable real maps.
-Each default route is a looping railway with a branch and five named stations.
-Changing the seed regenerates scenery and route details within its theme.
-
-| World | Character |
-| --- | --- |
-| Alpine Crossing | Mountain lake, snow-capped massif, conifer forests and elevated sections. |
-| Pacific Coast | Ocean cliffs, coastal towns and bridges. |
-| Nordic Fjords | Steep fjord landscape, snow and reduced adhesion. |
-| Canyon Trails | Layered red rock, sparse vegetation and heavy-freight terrain. |
-| Sakura Valley | Blossom trees, fields, villages and a faster electrified route. |
-| Highland Wanderer | Moorland, loch, stone structures and heritage driving. |
-| Pine Valley | Gentle woodland railway and small towns. |
-| Neon Metropolis | Elevated urban railway, towers and illuminated windows. |
-
-## Rolling stock
-
-| Train | Type | Nominal maximum power | Stock speed ceiling |
-| --- | --- | ---: | ---: |
-| Aurora E200 | Electric intercity | 4.2 MW | 200 km/h |
-| Velocity 320 | High-speed set | 8.0 MW | 320 km/h |
-| Atlas D90 | Diesel freight | 2.9 MW | 120 km/h |
-| Heritage Pacific | Steam excursion | 1.7 MW | 120 km/h |
-| Metro M8 | Electric commuter | 2.4 MW | 120 km/h |
-| Ranger DMU | Regional diesel | 1.1 MW | 160 km/h |
-
-These are fictional authored parameters, not measured real-locomotive data. A
-stock's maximum speed is not permission to reach that speed on every route: line
-and curvature limits apply. The fastest default line limit is 220 km/h, and
-individual curves can impose substantially lower limits.
-
-## Develop and test
+## Run locally
 
 ```sh
-npm test                 # Node's built-in test runner; no npm install required
-python3 tools/build.py   # Rebuild the dependency-free standalone distribution
+git clone https://github.com/wieslawsoltes/RailboundAdventures.git
+cd RailboundAdventures
+npm start
 ```
 
-`tools/build.py` recursively resolves this project's explicit named ES-module
-imports. It preserves each module in an isolated closure, inlines CSS and the SVG
-icon, and emits `dist/index.html`, `dist/app.bundle.js`, and a single-file HTML in
-the parent directory. This is a deliberately scoped bundler, not a general
-replacement for a JavaScript build system.
+Open `http://localhost:8000`. `npm start` uses Python 3's static HTTP server; no npm
+packages are needed to run or build the game. `run.sh` and `run.bat` provide alternative
+launchers. Node 22+ is used for the regression suite.
 
-Browser integration tests use the optional Python Playwright package and an
-installed Chromium. See [docs/TESTING.md](docs/TESTING.md) for the actual test
-conditions, exact checks and important unverified paths. No testing dependencies
-are loaded by the game.
-
-The runtime is available as `globalThis.railbound` for inspection:
-
-```js
-railbound.togglePause(true);
-console.table(railbound.trains.map(t => ({
-  id: t.id,
-  stock: t.stock.name,
-  massKg: t.mass,
-  speedKmh: t.speed * 3.6
-})));
-const project = railbound.projectSnapshot();
-await railbound.importProject(project);
+```sh
+npm test
+npm run build:pages
 ```
 
-Adding a world or locomotive starts in `src/data.js`. The renderer is not tied to
-the DOM control layer, and physics tests do not require a browser or GPU. See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for coordinate conventions, rendering
-contracts, physics equations, persistence and extension points.
+The build validates all imports, asset paths, hashes, PWA scope and offline entries.
+It emits the project-subdirectory-safe website in `_site/`, a self-contained edition
+at `dist/index.html`, and readable `dist/app.bundle.js`. The single-file edition embeds
+the bundled surface maps, authored textures and mesh pack; its size is intentional.
+The build also writes `Railbound-Adventures.html` beside the repository directory.
 
-## Scope and limitations
+WebGPU needs a compatible browser, hardware acceleration and a secure context
+(HTTPS or localhost). Host the mobile version over HTTPS. Ordinary HTTP at another
+computer's LAN address is not localhost. Unsupported WebGPU falls back to WebGL 2;
+no-float WebGL uses the LDR compatibility path. Mobile layout emulation is not a
+substitute for testing on physical phones.
 
-This delivery is a playable procedural 3D railway sandbox with substantial
-working systems. It is **not feature-complete parity with a commercial train
-simulator**, a certified training model or a photogrammetric reconstruction.
-The art is procedural and visibly stylized rather than AAA photorealistic.
+## Drive
 
-Dynamics are one-dimensional along the railway. Cars follow actual route history,
-but coupler slack, suspension, wheel/rail contact geometry and off-rail rigid-body
-crashes are not solved as full multibody dynamics. Excessive lateral acceleration
-or train contact disables and brakes a train; it does not produce a physically
-deformed crash. Steam, adhesion and braking are useful approximations, not
-manufacturer-validated equipment models.
+Press **Begin your journey** to configure departure. **W/S** adjusts power,
+**D/A** adjusts the train brake, **Space** applies emergency braking, **C** cycles
+cameras, and **1** selects the cab. Touch sliders expose the same driving controls.
+Use **Studio / F2** for photo mode and **Journey** for route guidance and telemetry.
+Photo mode pauses the simulation, isolates driving shortcuts and restores the
+previous camera and pause state on exit. Screenshots capture actual rendered pixels.
 
-The railway editor supports closed loops with the built-in branch topology, not
-an arbitrary rail-network construction system. Signaling is a simplified block
-system, not a certified implementation of ETCS, PZB, AWS or a national rulebook.
-There is no multiplayer, downloaded real-world geography, asset marketplace,
-licensed fleet, full timetable/career economy, walkable passenger simulation,
-seamless regional streaming or comprehensive operational failure catalog.
+[Complete controls](docs/CONTROLS.md) · [Architecture](docs/ARCHITECTURE.md)
 
-The native WebGPU code path is implemented but was **not exercised on a secure,
-native-GPU browser in the delivery environment**. WebGL 2 rendering and gameplay
-were exercised in Chromium using a software GPU. Phone-sized layouts and touch
-controls were tested through browser emulation, not physical iOS/Android devices.
-Physical gamepads, audio hardware, offline service-worker behavior and thermal
-performance also need target-device validation. No frame-rate guarantee is made.
+## Explore and edit
 
-## License and privacy
+Eight fictional regions have different terrain models, ecology, landmarks and scenic
+railway alignments: Alpine, Pacific Coast, Nordic, Canyon, Sakura, Highland, Pine and
+Metropolis. Choose a region and seed through **Worlds → Survey & enter**. Relief,
+ecology and erosion settings affect generation. **Version-2 saves preserve their old
+geography**; generate a fresh world to see the newer landscapes and station kit.
 
-MIT; see LICENSE. The game makes no analytics or third-party API requests.
-Projects remain in browser-local storage unless explicitly exported. The service
-worker requests only same-origin application files. No external fonts, images,
-models or recorded audio are bundled.
+The world editor places scenery/stations, edits relief, changes electrification and
+accepts custom closed-loop alignments. Staged edits support undo/redo and rebuild the
+simulated railway when applied. Project JSON import/export is validated; browser
+storage provides local save/restore. The service worker precaches runtime modules,
+textures and authored geometry for offline reload after successful installation.
 
-## GitHub Pages deployment
+Six fictional train families cover electric intercity, high-speed, diesel freight,
+steam excursion, electric commuter and regional diesel operation. Consist mass affects
+traction and braking. Available systems include adhesion and sanding, gradients,
+longitudinal resistance, progressive air-brake response, independent/dynamic/parking/
+emergency brakes, doors, reverser, master power, lights, horn, wipers and simplified
+steam/fuel controls. AI traffic, block occupancy, selectable turnout, signals,
+manual signal holds, protection, station dwell and passenger/freight activities remain
+independent of visual effects. Journey guidance is advisory, not a braking guarantee.
 
-Pushes to `main` run the core tests, rebuild the standalone game, validate the
-static app-shell asset graph and deploy `_site/` to GitHub Pages. Pull requests
-run the same verification without publishing. All runtime paths are relative
-and support the `/RailboundAdventures/` project subdirectory. See
-[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for details.
+## Rendering and prior upgrades
+
+**Material & Lighting Fidelity 3.3:** eight bundled CC0 surface sets, signed triplanar
+normal mapping, mipmapped anisotropic arrays, three stabilized shadow ranges,
+world-radius screen-space ambient occlusion, analytical sky specular response,
+view-dependent window-room shading and instanced architectural details.
+[Details](docs/FIDELITY.md)
+
+**Living Worlds 3.2:** dense branch/leaf forests, three vegetation levels, streamed
+understory, connected streets, parcels, mixed-height districts, parks, avenue trees,
+façade materials and shaped parked vehicles. [Details](docs/LIVING-WORLDS.md)
+
+**Cinematic Journeys 3.1:** linear HDR, multisample rendering, soft bloom, four grades,
+photo studio, telemetry, camera comfort controls, synthesized environmental audio,
+bird flocks, shoreline foam, night atmosphere and corrected railway structures.
+[Details](docs/CINEMATIC-JOURNEYS.md)
+
+**Expeditions 3.0:** domain-warped terrain, bounded hydraulic/thermal erosion, drainage,
+climate-dependent ecology, terrain-aware asymmetric railway circuits, worker generation
+and detailed mechanical train assemblies. [Details](docs/EXPEDITIONS.md)
+
+## Verification and scope
+
+Core tests cover simulation, geometry, deterministic generation, project validation,
+asset integrity, renderer contracts and resource ownership. Browser workflows exercise
+WebGPU and WebGL, all regions and trains, rendering changes, real driving controls,
+mobile layouts, offline reload and the single-file build. Art & Motion additionally
+reads actual HDR scene/history data to test reactive-object and disocclusion behavior.
+Pages deployment compares every published runtime file byte-for-byte with its build.
+
+Check the current [Actions results](https://github.com/wieslawsoltes/RailboundAdventures/actions)
+for the exact candidate or published revision; a historical passing run is not proof of
+a newer commit. Screenshots and machine-readable reports are retained as CI artifacts.
+[Testing guide](docs/TESTING.md)
+
+This remains a procedural sandbox, not complete commercial train-simulator or AAA
+art parity. The curated art library is small; landscapes and most architecture/rolling
+stock are procedural. Window rooms are shader illusions, not enterable interiors.
+There is no ray tracing, dynamic global illumination, multiplayer, surveyed real routes,
+animated road traffic or full wheel/rail multibody derailment physics. The connected
+railway operating model is not an arbitrary multi-line network editor. Software-GPU
+checks establish correctness, not native GPU performance or physical-device support.
+
+## Licensing
+
+Original source is [MIT licensed](LICENSE). Bundled ambientCG surfaces and Poly Haven
+natural assets use CC0-1.0; their separate licenses, credits and provenance manifests
+are in `assets/materials/` and `assets/authored/`. Acquisition/conversion tools are
+explicit offline steps, not startup dependencies. meshoptimizer 1.2.0 is a build-time
+MIT-licensed simplifier and is not part of the game runtime.

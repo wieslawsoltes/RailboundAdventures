@@ -27,7 +27,6 @@ def render(page,name,cover=True):
  let error=null;if(r.device){await r.device.queue.onSubmittedWorkDone();error=(await r.device.popErrorScope())?.message||null;}else error=r.gl.getError();
  return {error,calls:r.drawCalls,triangles:r.triangles,cover:a.groundCover.visibleInstances,tiles:a.groundCover.tiles.size,lost:r.lost};}''',cover)
  check(name+' GPU submission',not stats['error'] and not stats['lost'] and stats['calls']>10,stats)
- # DOM controls must not make an empty GPU canvas pass the image test.
  hidden=page.add_style_tag(content='body > :not(#viewport) {visibility:hidden!important}')
  try:png=page.locator('#viewport').screenshot(timeout=120000)
  finally:hidden.evaluate('(node)=>node.remove()')
@@ -45,13 +44,14 @@ with sync_playwright() as p:
  page.on('console',lambda m:report['errors'].append(m.text) if m.type=='error' else None)
  try:
   response=page.goto(BASE,wait_until='domcontentloaded',timeout=90000);check('candidate served',response.status==200);boot(page)
+  expected_botany=page.evaluate("async()=> (await import('./src/botany.js')).BOTANY_REVISION")
+  check('current botanical generator available',isinstance(expected_botany,int) and expected_botany>=2,expected_botany)
   for region in ['alpine','pine','metro','coast','sakura','nordic','highland','canyon']:
    if region!='alpine':page.evaluate('(id)=>railbound.loadWorld(id)',region)
    page.evaluate('railbound.paused=true;railbound.renderEnabled=false;railbound.env.hour=13.5;railbound.env.weather="clear"')
    features=page.evaluate('railbound.world.features');report['worlds'].append({'region':region,**features})
-   check(region+' uses new botany',features.get('botanyRevision')==1 and features.get('trees',0)>0,features)
+   check(region+' uses current botany',features.get('botanyRevision')==expected_botany and features.get('trees',0)>0,features)
    check(region+' has validated street component',features.get('roadSegments',0)>0)
-   # Capture each region in normal driving view, not just a numerical preview.
    page.evaluate("railbound.camera.setMode('chase');railbound.camera.initial=true")
    render(page,region+'-driving')
    if region=='pine':
@@ -81,7 +81,6 @@ with sync_playwright() as p:
     page.evaluate('''()=>{const a=railbound,d=a.world.districts.slice().sort((x,y)=>y.buildings.length-x.buildings.length)[0];const b=d.buildings[0],p=b.position;
      a.camera.position=[p[0]+d.right[0]*23+d.forward[0]*28,p[1]+6,p[2]+d.right[2]*23+d.forward[2]*28];a.camera.target=[p[0],p[1]+7,p[2]];a.camera.setMode('free');a.env.hour=13.5;}''')
     render(page,'city-street-level',False)
-  # Real controls, not injected replacement implementations.
   page.evaluate("railbound.camera.setMode('chase');railbound.recover();railbound.env.weather='clear'")
   page.locator('#depart').click();motion=page.evaluate('''()=>{railbound.paused=true;for(let i=0;i<2100;i++)railbound.tick(1/60);return {speed:railbound.player.speed,distance:railbound.player.cursor.odometer};}''');check('driving still moves train',motion['distance']>20,motion)
   page.locator('#emergency').click();page.evaluate('for(let i=0;i<3000;i++)railbound.tick(1/60)');check('emergency brakes stop train',page.evaluate('Math.abs(railbound.player.speed)<.05'))

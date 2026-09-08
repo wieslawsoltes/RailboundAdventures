@@ -1,0 +1,690 @@
+{
+  "version": 1,
+  "size": 512,
+  "meshes": [
+    {
+      "name": "rock_moss_set_01_rock01",
+      "source": "rock_moss_set_01",
+      "layer": 0,
+      "cutout": false,
+      "bounds": [
+        [
+          -1.118816077709198,
+          0.0,
+          -1.6844021677970886
+        ],
+        [
+          1.118816077709198,
+          1.4726980924606323,
+          1.6844021677970886
+        ]
+      ],
+      "sourceTriangles": 11000,
+      "lods": [
+        {
+          "vertexCount": 6078,
+          "indexCount": 33000,
+          "vertexOffset": 16,
+          "indexOffset": 194512,
+          "error": 0
+        },
+        {
+          "vertexCount": 2773,
+          "indexCount": 13860,
+          "vertexOffset": 326512,
+          "indexOffset": 415248,
+          "error": 0.0034525080118328333
+        },
+        {
+          "vertexCount": 1094,
+          "indexCount": 4950,
+          "vertexOffset": 470688,
+          "indexOffset": 505696,
+          "error": 0.007804811466485262
+        }
+      ]
+    },
+    {
+      "name": "rock_moss_set_01_rock02",
+      "source": "rock_moss_set_01",
+      "layer": 0,
+      "cutout": false,
+      "bounds": [
+        [
+          -1.3276904225349426,
+          0.0,
+          -1.6318601965904236
+        ],
+        [
+          1.3276904225349426,
+          1.261991173028946,
+          1.6318601965904236
+        ]
+      ],
+      "sourceTriangles": 10996,
+      "lods": [
+        {
+          "vertexCount": 6192,
+          "indexCount": 32988,
+          "vertexOffset": 525496,
+          "indexOffset": 723640,
+          "error": 0
+        },
+        {
+          "vertexCount": 2883,
+          "indexCount": 13848,
+          "vertexOffset": 855592,
+          "indexOffset": 947848,
+          "error": 0.003086439101025462
+        },
+        {
+          "vertexCount": 1164,
+          "indexCount": 4944,
+          "vertexOffset": 1003240,
+          "indexOffset": 1040488,
+          "error": 0.0066232867538928986
+        }
+      ]
+    },
+    {
+      "name": "rock_moss_set_01_rock03",
+      "source": "rock_moss_set_01",
+      "layer": 0,
+      "cutout": false,
+      "bounds": [
+        [
+          -1.054291307926178,
+          0.0,
+          -1.0397928357124329
+        ],
+        [
+          1.054291307926178,
+          1.0996944606304169,
+          1.0397928357124329
+        ]
+      ],
+      "sourceTriangles": 5000,
+      "lods": [
+        {
+          "vertexCount": 2741,
+          "indexCount": 15000,
+          "vertexOffset": 1060264,
+          "indexOffset": 1147976,
+          "error": 0
+        },
+        {
+          "vertexCount": 1261,
+          "indexCount": 6300,
+          "vertexOffset": 1207976,
+          "indexOffset": 1248328,
+          "error": 0.004976687952876091
+        },
+        {
+          "vertexCount": 511,
+          "indexCount": 2250,
+          "vertexOffset": 1273528,
+          "indexOffset": 1289880,
+          "error": 0.011366852559149265
+        }
+      ]
+    },
+    {
+      "name": "rock_moss_set_01_rock04",
+      "source": "rock_moss_set_01",
+      "layer": 0,
+      "cutout": false,
+      "bounds": [
+        [
+          -1.0638146698474884,
+          0.0,
+          -0.9823706746101379
+        ],
+        [
+          1.0638146698474884,
+          1.768319845199585,
+          0.9823706746101379
+        ]
+      ],
+      "sourceTriangles": 10589,
+      "lods": [
+        {
+          "vertexCount": 5691,
+          "indexCount": 31767,
+          "vertexOffset": 1298880,
+          "indexOffset": 1480992,
+          "error": 0
+        },
+        {
+          "vertexCount": 2574,
+          "indexCount": 13341,
+          "vertexOffset": 1608060,
+          "indexOffset": 1690428,
+          "error": 0.0035766740329563618
+        },
+        {
+          "vertexCount": 1004,
+          "indexCount": 4761,
+          "vertexOffset": 1743792,
+          "indexOffset": 1775920,
+          "error": 0.008283848874270916
+        }
+      ]
+    },
+    {
+      "name": "rock_moss_set_01_rock05",
+      "source": "rock_moss_set_01",
+      "layer": 0,
+      "cutout": false,
+      "bounds": [
+        [
+          -0.9086613953113556,
+          0.0,
+          -1.4993318915367126
+        ],
+        [
+          0.9086613953113556,
+          1.205450713634491,
+          1.4993318915367126
+        ]
+      ],
+      "sourceTriangles": 16548,
+      "lods": [
+        {
+          "vertexCount": 8264,
+          "indexCount": 48000,
+          "vertexOffset": 1794964,
+          "indexOffset": 2059412,
+          "error": 0.00038573905476368964
+        },
+        {
+          "vertexCount": 3599,
+          "indexCount": 20160,
+          "vertexOffset": 2251412,
+          "indexOffset": 2366580,
+          "error": 0.0012912885285913944
+        },
+        {
+          "vertexCount": 1335,
+          "indexCount": 7200,
+          "vertexOffset": 2447220,
+          "indexOffset": 2489940,
+          "error": 0.0031620634254068136
+        }
+      ]
+    },
+    {
+      "name": "rock_moss_set_01_rock06",
+      "source": "rock_moss_set_01",
+      "layer": 0,
+      "cutout": false,
+      "bounds": [
+        [
+          -1.0629911124706268,
+          0.0,
+          -1.3786515593528748
+        ],
+        [
+          1.0629911124706268,
+          1.2618526816368103,
+          1.3786515593528748
+        ]
+      ],
+      "sourceTriangles": 8994,
+      "lods": [
+        {
+          "vertexCount": 4748,
+          "indexCount": 26982,
+          "vertexOffset": 2518740,
+          "indexOffset": 2670676,
+          "error": 0
+        },
+        {
+          "vertexCount": 2111,
+          "indexCount": 11328,
+          "vertexOffset": 2778604,
+          "indexOffset": 2846156,
+          "error": 0.0028677715454250574
+        },
+        {
+          "vertexCount": 823,
+          "indexCount": 4044,
+          "vertexOffset": 2891468,
+          "indexOffset": 2917804,
+          "error": 0.006753392051905394
+        }
+      ]
+    },
+    {
+      "name": "tree_stump_02",
+      "source": "tree_stump_02",
+      "layer": 1,
+      "cutout": false,
+      "bounds": [
+        [
+          -0.7608488202095032,
+          0.0,
+          -0.6962665617465973
+        ],
+        [
+          0.7608488202095032,
+          0.5220921486616135,
+          0.6962665617465973
+        ]
+      ],
+      "sourceTriangles": 62345,
+      "lods": [
+        {
+          "vertexCount": 7318,
+          "indexCount": 35997,
+          "vertexOffset": 2933980,
+          "indexOffset": 3168156,
+          "error": 0.00182654382660985
+        },
+        {
+          "vertexCount": 3429,
+          "indexCount": 15111,
+          "vertexOffset": 3312144,
+          "indexOffset": 3421872,
+          "error": 0.0037178711500018835
+        },
+        {
+          "vertexCount": 1490,
+          "indexCount": 5397,
+          "vertexOffset": 3482316,
+          "indexOffset": 3529996,
+          "error": 0.010298382490873337
+        }
+      ]
+    },
+    {
+      "name": "fern_02_b",
+      "source": "fern_02",
+      "layer": 2,
+      "cutout": true,
+      "bounds": [
+        [
+          -0.49487370252609253,
+          0.0,
+          -0.4468448609113693
+        ],
+        [
+          0.49487370252609253,
+          0.4276947118341923,
+          0.4468448609113693
+        ]
+      ],
+      "sourceTriangles": 2384,
+      "lods": [
+        {
+          "vertexCount": 1660,
+          "indexCount": 7152,
+          "vertexOffset": 3551584,
+          "indexOffset": 3604704,
+          "error": 0
+        },
+        {
+          "vertexCount": 912,
+          "indexCount": 3000,
+          "vertexOffset": 3633312,
+          "indexOffset": 3662496,
+          "error": 0.011358620598912239
+        },
+        {
+          "vertexCount": 797,
+          "indexCount": 2358,
+          "vertexOffset": 3674496,
+          "indexOffset": 3700000,
+          "error": 0.04673748463392258
+        }
+      ]
+    },
+    {
+      "name": "fern_02_c",
+      "source": "fern_02",
+      "layer": 2,
+      "cutout": true,
+      "bounds": [
+        [
+          -0.4371629059314728,
+          0.0,
+          -0.38261283934116364
+        ],
+        [
+          0.4371629059314728,
+          0.3490203693509102,
+          0.38261283934116364
+        ]
+      ],
+      "sourceTriangles": 2248,
+      "lods": [
+        {
+          "vertexCount": 1568,
+          "indexCount": 6744,
+          "vertexOffset": 3709432,
+          "indexOffset": 3759608,
+          "error": 0
+        },
+        {
+          "vertexCount": 866,
+          "indexCount": 2832,
+          "vertexOffset": 3786584,
+          "indexOffset": 3814296,
+          "error": 0.011932442896068096
+        },
+        {
+          "vertexCount": 758,
+          "indexCount": 2256,
+          "vertexOffset": 3825624,
+          "indexOffset": 3849880,
+          "error": 0.04989558830857277
+        }
+      ]
+    },
+    {
+      "name": "fern_02_a",
+      "source": "fern_02",
+      "layer": 2,
+      "cutout": true,
+      "bounds": [
+        [
+          -0.27597030997276306,
+          0.0,
+          -0.30671054124832153
+        ],
+        [
+          0.27597030997276306,
+          0.2868035454303026,
+          0.30671054124832153
+        ]
+      ],
+      "sourceTriangles": 784,
+      "lods": [
+        {
+          "vertexCount": 544,
+          "indexCount": 2352,
+          "vertexOffset": 3858904,
+          "indexOffset": 3876312,
+          "error": 0
+        },
+        {
+          "vertexCount": 305,
+          "indexCount": 984,
+          "vertexOffset": 3885720,
+          "indexOffset": 3895480,
+          "error": 0.014328070916235447
+        },
+        {
+          "vertexCount": 261,
+          "indexCount": 762,
+          "vertexOffset": 3899416,
+          "indexOffset": 3907768,
+          "error": 0.05505649000406265
+        }
+      ]
+    },
+    {
+      "name": "fern_02_d",
+      "source": "fern_02",
+      "layer": 2,
+      "cutout": true,
+      "bounds": [
+        [
+          -0.28639109432697296,
+          0.0,
+          -0.2966391444206238
+        ],
+        [
+          0.28639109432697296,
+          0.21308755222707987,
+          0.2966391444206238
+        ]
+      ],
+      "sourceTriangles": 816,
+      "lods": [
+        {
+          "vertexCount": 565,
+          "indexCount": 2448,
+          "vertexOffset": 3910816,
+          "indexOffset": 3928896,
+          "error": 0
+        },
+        {
+          "vertexCount": 309,
+          "indexCount": 1026,
+          "vertexOffset": 3938688,
+          "indexOffset": 3948576,
+          "error": 0.01535759400576353
+        },
+        {
+          "vertexCount": 273,
+          "indexCount": 810,
+          "vertexOffset": 3952680,
+          "indexOffset": 3961416,
+          "error": 0.047538112848997116
+        }
+      ]
+    }
+  ],
+  "layers": [
+    {
+      "id": "rock_moss_set_01",
+      "license": "CC0-1.0",
+      "sourceURL": "https://polyhaven.com/a/rock_moss_set_01",
+      "authors": {
+        "Kless Gyzen": "All"
+      },
+      "albedo": "rock-moss-set-01-color.png",
+      "surface": "rock-moss-set-01-surface.png",
+      "sha256": {
+        "albedo": "2e0afd0da682c3687cea1fbceeab2855dc599460d66897cd8c54c405fd11c546",
+        "surface": "ce151e1d71bcf277480a7364c2c5db6ed7cead16dc7ac05f11bced68187d40a5"
+      }
+    },
+    {
+      "id": "tree_stump_02",
+      "license": "CC0-1.0",
+      "sourceURL": "https://polyhaven.com/a/tree_stump_02",
+      "authors": {
+        "Rob Tuytel": "All"
+      },
+      "albedo": "tree-stump-02-color.png",
+      "surface": "tree-stump-02-surface.png",
+      "sha256": {
+        "albedo": "6ce459e39c6eff990837e7bd3e4077797215f4566ac1155a18b21e75aaf6322e",
+        "surface": "60d72bee56ca09d7a035069b1d787607591e0944545acb18e0577cde21ea8a47"
+      }
+    },
+    {
+      "id": "fern_02",
+      "license": "CC0-1.0",
+      "sourceURL": "https://polyhaven.com/a/fern_02",
+      "authors": {
+        "Rob Tuytel": "scanning",
+        "Rico Cilliers": "modeling"
+      },
+      "albedo": "fern-02-color.png",
+      "surface": "fern-02-surface.png",
+      "sha256": {
+        "albedo": "bb907abded7e8def6697a7e991e2eb4ea97f40cd9292a626b2b30d0ccd234a54",
+        "surface": "d0e7e89bae67c53c82a18791856a65e061cf67616cb57c8e7be4a5794c81b928"
+      }
+    },
+    {
+      "id": "pine_tree_01",
+      "license": "CC0-1.0",
+      "sourceURL": "https://polyhaven.com/a/pine_tree_01",
+      "authors": {
+        "Rob Tuytel": "photography",
+        "Rico Cilliers": "modeling"
+      },
+      "albedo": "pine-tree-01-color.png",
+      "surface": "pine-tree-01-surface.png",
+      "sha256": {
+        "albedo": "4dd1eed72056feb0fb2f2acbc1c6d546308b33fe0b552671ba8985793af17b8a",
+        "surface": "708035dbc0e4b601456db86508fa9ec5e58807de9984724697058fff505b0395"
+      }
+    }
+  ],
+  "provenance": {
+    "license": "CC0-1.0",
+    "licenseURL": "https://polyhaven.com/license",
+    "source": "Poly Haven",
+    "files": [
+      {
+        "url": "https://api.polyhaven.com/files/rock_moss_set_01",
+        "bytes": 26375,
+        "sha256": "07302bec237ba887a93ae977bdfd33d464553cbba75ef8393512cc3766d39506"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/rock_moss_set_01/rock_moss_set_01_1k.gltf",
+        "bytes": 9987,
+        "sha256": "c36675aca9c6b2be7785c2534cf413b03ec82a5a2a5407a2b1c0cdb0346c9727"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/rock_moss_set_01/rock_moss_set_01.bin",
+        "bytes": 1466380,
+        "sha256": "de8360e6175879aaf02c171911069cf5f1852547f9ca7f10e440085dbcc3315e"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_nor_gl_1k.jpg",
+        "bytes": 209975,
+        "sha256": "eb4aad3f207f1dc5b624d74ae240372171626a66912bd71adf7bd3e518181d6e"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_diff_1k.jpg",
+        "bytes": 168099,
+        "sha256": "40cea65d8aa4ee73a93b04af19963834d061eee9779c3fc2c1cba76eef812ccc"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/rock_moss_set_01/rock_moss_set_01_rough_1k.jpg",
+        "bytes": 82624,
+        "sha256": "4d6ec46623abd8e2cdb855f59c7ce31873ad61b36b60e4de579e9e776a497c6b"
+      },
+      {
+        "url": "https://api.polyhaven.com/files/tree_stump_02",
+        "bytes": 25439,
+        "sha256": "8d9a77e3c81b3a474f0a61eeeada5556ff6e62d9fd1b5731e869f1b2992c0de2"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/tree_stump_02/tree_stump_02_1k.gltf",
+        "bytes": 2802,
+        "sha256": "a79189160d1c7cfd6d875ab4470e4d2ff9cee08d58943be69d6028034a08c7ec"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/tree_stump_02/tree_stump_02.bin",
+        "bytes": 1433880,
+        "sha256": "db5e85d08beb889f0cc5be3b9bdfbcb1ae6df47e8e242af3c355766422f49d1d"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_02/tree_stump_02_nor_gl_1k.jpg",
+        "bytes": 1334839,
+        "sha256": "24c07761bbdfd43b5342690b4f8dd7fc0773f9e4b966dd310bb77fa5c5ede77a"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_02/tree_stump_02_diff_1k.jpg",
+        "bytes": 901605,
+        "sha256": "318dbe92494887d137607144ef20bc170cbda1796dad15364ecf40683a79b8a2"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/tree_stump_02/tree_stump_02_arm_1k.jpg",
+        "bytes": 796214,
+        "sha256": "d009168a1e043b9b980dd23a1699805d8888b8fe9cc79455f809a4e58d18b96b"
+      },
+      {
+        "url": "https://api.polyhaven.com/files/fern_02",
+        "bytes": 29294,
+        "sha256": "a3e43a1dad9a175defdc5816daed6ab1192d4dcd4c8f8a5becd44e63616ba0b3"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/1k/fern_02/fern_02_1k.gltf",
+        "bytes": 6899,
+        "sha256": "33974295ee19670af4877705fc7d91f33f42d6302f0d44a625e072271223031f"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/gltf/8k/fern_02/fern_02.bin",
+        "bytes": 176176,
+        "sha256": "fe1abb762bcbbc7ad9e86925c8080437a62add257d9280e9142fdc85c226e64c"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_nor_gl_1k.jpg",
+        "bytes": 367222,
+        "sha256": "45bce132c6e96a0864bc89ab5da51361ab3f4afa83a6669ae499ab5ca811f621"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_diff_1k.jpg",
+        "bytes": 315705,
+        "sha256": "a828a6e7b4c01c826911e2eac4b3afc7457dab7b3b392a31c681ed88b7d50029"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/jpg/1k/fern_02/fern_02_arm_1k.jpg",
+        "bytes": 280359,
+        "sha256": "ebfb5d76ce9cbdaec20bcd22dce9b755f0b1b8650ef29ca13555e3e6961025d7"
+      },
+      {
+        "url": "https://api.polyhaven.com/files/pine_tree_01",
+        "bytes": 126939,
+        "sha256": "6dc7a454e1047014ba5dc0cc3fe62a0f5ade64c25051f46b9789136dc46b0551"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/pine_tree_01/pine_tree_01_twig_diff_1k.png",
+        "bytes": 3208228,
+        "sha256": "d02c031de64b8ad671f3dd0da19870fa4783d912ae6674aeab0702871deeaeaa"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/pine_tree_01/pine_tree_01_twig_alpha_1k.png",
+        "bytes": 351928,
+        "sha256": "6f91aa99f2c27108d6f817f874954aa7df8bfbb4dea2673e9322555a6ae79d99"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/pine_tree_01/pine_tree_01_twig_nor_gl_1k.png",
+        "bytes": 3021524,
+        "sha256": "4b79eda7fe8843d71f9289bd0d3897a1b0a7310b1872b390a589a04b510b0597"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/pine_tree_01/pine_tree_01_twig_arm_1k.png",
+        "bytes": 1587106,
+        "sha256": "a6db742a445f6ba0d2d324b657d4880ba492b5415458beda6defd797f1eb01be"
+      },
+      {
+        "url": "https://dl.polyhaven.org/file/ph-assets/Models/png/1k/fern_02/fern_02_alpha_1k.png",
+        "bytes": 114589,
+        "sha256": "ea3c64284c7ebdeedf484d2d816eae92825ec526140c3bb83859ddc7a64001f9"
+      },
+      {
+        "url": "https://api.polyhaven.com/info/rock_moss_set_01",
+        "bytes": 986,
+        "sha256": "a64dc78a2cad65c1c850dff05ca77de2dfe4c3fe46c84b2ea3c8057058a292cd"
+      },
+      {
+        "url": "https://api.polyhaven.com/info/tree_stump_02",
+        "bytes": 1163,
+        "sha256": "f5e231a19b601305e8c70a151e9efb7c2d75cc480cf6c916e50cab19b363b08f"
+      },
+      {
+        "url": "https://api.polyhaven.com/info/fern_02",
+        "bytes": 1065,
+        "sha256": "41b2d88d4dfb599f6249be273f23d6871bde922f1ea88e98915bf74c82723d5e"
+      },
+      {
+        "url": "https://api.polyhaven.com/info/pine_tree_01",
+        "bytes": 1175,
+        "sha256": "eda19cb3834f9dd0d65987e75d5412d9880e7b922b3f39420c50ffc556880652"
+      }
+    ]
+  },
+  "conversion": {
+    "layout": "position3 normal3 uv2 float32 LE",
+    "maps": "sRGB color/opacity, linear normalXY roughness AO",
+    "pineCrop": [
+      0,
+      0,
+      256,
+      460
+    ],
+    "hiddenColorDilation": 8,
+    "lodTool": "meshoptimizer 1.2.0"
+  },
+  "meshFile": "hero-meshes.bin",
+  "meshBytes": 3964656,
+  "meshHash": "9d214abe0c2b27866a67e66f8908978a662313848b5d6afa5c764b2b1a333ba5"
+}

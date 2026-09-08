@@ -1,3 +1,4 @@
+import {HERO_WGSL,HERO_GLSL,HERO_APPLY_WGSL,HERO_APPLY_GLSL,HERO_BINDINGS_WGSL,HERO_BINDINGS_GLSL} from './authored-shaders.js';
 import {SURFACE_WGSL,SURFACE_GLSL,SURFACE_APPLY_WGSL,SURFACE_APPLY_GLSL} from './fidelity-shaders.js';
 import {LEAF_WGSL,LEAF_GLSL,MATERIAL_WGSL,MATERIAL_GLSL} from './living-shaders.js';
 export const WGSL_COMMON = /* wgsl */`
@@ -39,13 +40,13 @@ struct Vin {@location(0) p:vec3f,@location(1) n:vec3f,@location(2) uv:vec2f,@loc
 struct Vout {@builtin(position) position:vec4f,@location(0) world:vec3f,@location(1) normal:vec3f,@location(2) color:vec4f,@location(3) @interpolate(flat) props:vec4f,@location(4) uv:vec2f,@location(5) light:vec4f};
 @vertex fn vs(v:Vin)->Vout {let m=mat4x4f(v.m0,v.m1,v.m2,v.m3);var p=m*vec4f(v.p,1);var o:Vout;
  if(v.props.x>4.5&&v.props.x<5.5){p.x+=sin(u.cameraTime.w*1.3+p.z*.08)*.13*u.viewport.w*max(0.,v.p.y);}
- if(v.props.x>10.5&&v.props.x<11.5){p=vec4f(canopyWind(p.xyz,v.m3.xyz,v.p,length(v.m1.xyz),v.uv),1.);}
+ if((v.props.x>10.5&&v.props.x<11.5)||(v.props.x>17.5&&v.props.x<18.5)){p=vec4f(canopyWind(p.xyz,v.m3.xyz,v.p,length(v.m1.xyz),v.uv),1.);}
  o.position=u.vp*p;o.world=p.xyz;o.normal=normalize(v.m0.xyz*v.n.x/max(.00001,dot(v.m0.xyz,v.m0.xyz))+v.m1.xyz*v.n.y/max(.00001,dot(v.m1.xyz,v.m1.xyz))+v.m2.xyz*v.n.z/max(.00001,dot(v.m2.xyz,v.m2.xyz)));o.color=v.color;o.props=v.props;o.uv=v.uv;if(v.props.x>11.5&&v.props.x<12.5){o.uv=v.uv*vec2f(select(length(v.m0.xyz),length(v.m2.xyz),abs(v.n.x)>.5),length(v.m1.xyz));}o.light=u.lightVP*p;return o;}
 `;
 export const WGSL_MAIN = WGSL_COMMON+LEAF_WGSL+/* wgsl */`
 @group(0) @binding(1) var shadow: texture_depth_2d_array;
 @group(0) @binding(2) var shadowSampler: sampler_comparison;
-`+SURFACE_WGSL+WGSL_VERTEX+/* wgsl */`
+`+SURFACE_WGSL+HERO_WGSL+WGSL_VERTEX+/* wgsl */`
 fn cascadeSample(world:vec3f,n:vec3f,index:i32)->vec2f {
  var matrix=u.lightVP;if(index==0){matrix=u.nearVP;}if(index==2){matrix=u.farVP;}
  let lp=matrix*vec4f(world+n*(.04+f32(index)*.05),1.);let p=lp.xyz/lp.w;let uv=p.xy*vec2f(.5,-.5)+vec2f(.5);
@@ -88,7 +89,7 @@ struct FragmentOut {@location(0) color:vec4f,@location(1) geometry:vec4f};
  }
  if(kind>5.5&&kind<6.5){col*=.89+noise((v.world.xz+vec2f(v.world.y*.71,v.world.y*.31))*5.)*.16;}
  if(kind>6.5&&kind<7.5){let grit=hash(floor(v.world.xz*23.));col*=.7+grit*.6;}
-`+SURFACE_APPLY_WGSL+/* wgsl */`
+`+SURFACE_APPLY_WGSL+HERO_APPLY_WGSL+/* wgsl */`
  let light=u.sunDay.xyz;let ndl=max(0.,dot(n,light));let visibility=shadeShadow(v.world,rawNormal);let hemi=mix(vec3f(.09,.105,.1),vec3f(.24,.30,.37),n.y*.5+.5)*mix(.12,1.,u.sunDay.w);
  let sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);
  let halfV=normalize(light+view);let ndh=max(0.,dot(n,halfV));let r=max(.06,rough);let alpha=r*r;let a2=alpha*alpha;let den=ndh*ndh*(a2-1.)+1.;let D=a2/(3.14159*den*den+.0001);let F=mix(vec3f(.035),col,metal)+(vec3f(1.)-mix(vec3f(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);let nv=max(.02,dot(n,view));let k=(r+1.)*(r+1.)/8.;
@@ -106,22 +107,23 @@ struct FragmentOut {@location(0) color:vec4f,@location(1) geometry:vec4f};
  if(u.headPos.w>.01){let delta=v.world-u.headPos.xyz;let d=length(delta);let cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));color+=col*vec3f(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
  if(kind>8.5&&kind<9.5){let foam=.64+.36*noise(vec2f(v.world.x*1.2,v.world.y*.24+u.cameraTime.w*2.8));color=mix(color,vec3f(.64,.79,.82)*foam,.7);}
  if(kind>9.5&&kind<10.5){let crest=.65+.35*sin(v.world.x*.09+v.world.z*.12-u.cameraTime.w*1.2);color=mix(color,vec3f(.65,.79,.79),crest*.72);}
- if(kind>10.5&&kind<11.5){color+=col*pow(max(0.,dot(-view,light)),3.)*.42*u.sunDay.w*visibility;}
+ if((kind>10.5&&kind<11.5)||(kind>17.5&&kind<18.5)){color+=col*pow(max(0.,dot(-view,light)),3.)*.42*u.sunDay.w*visibility;}
  if(glassAmount>0.){color=mix(color,atmosphere(reflect(-view,n),false)*.65,glassAmount*.45);}
  color+=col*emissive;
  let distance=length(v.world-u.cameraTime.xyz);let heightFog=exp(-max(v.world.y-u.env.w,0.)*.00085);let fog=1.-exp(-distance*u.fog.w*heightFog);color=mix(color,atmosphere(normalize(v.world-u.cameraTime.xyz),false),clamp(fog,0.,.99));
- var output:FragmentOut;output.color=vec4f(aces(color),select(select(1.,v.color.a,kind>7.5),coverage,kind>10.5&&kind<11.5));
+ var output:FragmentOut;output.color=vec4f(aces(color),select(select(1.,v.color.a,kind>7.5),coverage,(kind>10.5&&kind<11.5)||(kind>17.5&&kind<18.5)));
  let ambientShare=clamp(dot(indirect,vec3f(.2126,.7152,.0722))/max(.001,dot(color,vec3f(.2126,.7152,.0722))),0.,.85);
- output.geometry=vec4f(octNormal(rawNormal),distance,ambientShare);return output;
+ let reactive=v.color.a<.999||(kind>1.5&&kind<2.5)||(kind>7.5&&kind<10.5);
+ output.geometry=vec4f(octNormal(rawNormal),distance,select(ambientShare,-ambientShare-.1,reactive));return output;
 }
 `;
-export const WGSL_SHADOW=WGSL_COMMON+LEAF_WGSL+/* wgsl */`
+export const WGSL_SHADOW=WGSL_COMMON+LEAF_WGSL+HERO_BINDINGS_WGSL+/* wgsl */`
 struct Vin {@location(0) p:vec3f,@location(2) uv:vec2f,@location(3) m0:vec4f,@location(4) m1:vec4f,@location(5) m2:vec4f,@location(6) m3:vec4f,@location(8) props:vec4f};
 struct ShadowOut {@builtin(position) position:vec4f,@location(0) uv:vec2f,@location(1) @interpolate(flat) props:vec4f};
 @vertex fn vs(v:Vin)->ShadowOut {var p=(mat4x4f(v.m0,v.m1,v.m2,v.m3)*vec4f(v.p,1)).xyz;
- if(v.props.x>10.5&&v.props.x<11.5){p=canopyWind(p,v.m3.xyz,v.p,length(v.m1.xyz),v.uv);}
+ if((v.props.x>10.5&&v.props.x<11.5)||(v.props.x>17.5&&v.props.x<18.5)){p=canopyWind(p,v.m3.xyz,v.p,length(v.m1.xyz),v.uv);}
  var o:ShadowOut;o.position=u.lightVP*vec4f(p,1);o.uv=v.uv;o.props=v.props;return o;}
-@fragment fn fs(v:ShadowOut){if(v.props.x>10.5&&v.props.x<11.5&&leafMask(v.uv,v.props.z)<.45){discard;}}
+@fragment fn fs(v:ShadowOut){if(v.props.x>10.5&&v.props.x<11.5&&leafMask(v.uv,v.props.z)<.45){discard;}if(v.props.x>17.5&&v.props.x<18.5&&textureSampleLevel(heroColor,heroSampler,v.uv,i32(clamp(round(v.props.z),0.,3.)),0.).a<.45){discard;}}
 `;
 /** GLSL ES 3.0 fallback deliberately shares the same material model and frame layout. */
 export const GLSL_COMMON=/* glsl */`
@@ -146,10 +148,10 @@ export const GLSL_SKY_FS=`#version 300 es\n`+GLSL_COMMON+`in vec2 ndc;out vec4 o
 export const GLSL_MAIN_VS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+`
 layout(location=0) in vec3 aPos;layout(location=1) in vec3 aNormal;layout(location=2) in vec2 aUV;layout(location=3) in mat4 model;layout(location=7) in vec4 tint;layout(location=8) in vec4 params;
 out vec3 world;out vec3 normal;out vec4 color;flat out vec4 props;out vec2 uv;out vec4 lightPos;
-void main(){vec4 p=model*vec4(aPos,1);if(params.x>4.5&&params.x<5.5)p.x+=sin(u.cameraTime.w*1.3+p.z*.08)*.13*u.viewport.w*max(0.,aPos.y);if(params.x>10.5&&params.x<11.5)p=vec4(canopyWind(p.xyz,model[3].xyz,aPos,length(model[1].xyz),aUV),1.);gl_Position=u.vp*p;world=p.xyz;normal=normalize(model[0].xyz*aNormal.x/max(.00001,dot(model[0].xyz,model[0].xyz))+model[1].xyz*aNormal.y/max(.00001,dot(model[1].xyz,model[1].xyz))+model[2].xyz*aNormal.z/max(.00001,dot(model[2].xyz,model[2].xyz)));color=tint;props=params;uv=aUV;if(params.x>11.5&&params.x<12.5)uv*=vec2(abs(aNormal.x)>.5?length(model[2].xyz):length(model[0].xyz),length(model[1].xyz));lightPos=u.lightVP*p;}`;
+void main(){vec4 p=model*vec4(aPos,1);if(params.x>4.5&&params.x<5.5)p.x+=sin(u.cameraTime.w*1.3+p.z*.08)*.13*u.viewport.w*max(0.,aPos.y);if((params.x>10.5&&params.x<11.5)||(params.x>17.5&&params.x<18.5))p=vec4(canopyWind(p.xyz,model[3].xyz,aPos,length(model[1].xyz),aUV),1.);gl_Position=u.vp*p;world=p.xyz;normal=normalize(model[0].xyz*aNormal.x/max(.00001,dot(model[0].xyz,model[0].xyz))+model[1].xyz*aNormal.y/max(.00001,dot(model[1].xyz,model[1].xyz))+model[2].xyz*aNormal.z/max(.00001,dot(model[2].xyz,model[2].xyz)));color=tint;props=params;uv=aUV;if(params.x>11.5&&params.x<12.5)uv*=vec2(abs(aNormal.x)>.5?length(model[2].xyz):length(model[0].xyz),length(model[1].xyz));lightPos=u.lightVP*p;}`;
 export const GLSL_MAIN_FS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+`
 precision highp sampler2DArrayShadow;uniform sampler2DArrayShadow shadowTex;in vec3 world;in vec3 normal;in vec4 color;flat in vec4 props;in vec2 uv;in vec4 lightPos;layout(location=0) out vec4 outColor;layout(location=1) out vec4 outGeometry;
-`+SURFACE_GLSL+/* glsl */`
+`+SURFACE_GLSL+HERO_GLSL+/* glsl */`
 vec2 cascadeSample(vec3 world,vec3 n,int index){
  mat4 matrix=index==0?u.nearVP:index==1?u.lightVP:u.farVP;vec4 lp=matrix*vec4(world+n*(.04+float(index)*.05),1.);
  vec3 p=lp.xyz/lp.w;vec2 uv=p.xy*.5+.5;float z=p.z*.5+.5,edge=max(abs(p.x),abs(p.y));if(edge>.998||z<=0.||z>=1.)return vec2(1,1);
@@ -187,7 +189,7 @@ void main(){vec3 rawNormal=normalize(normal),worldDx=dFdx(world),worldDy=dFdy(wo
  }
  if(kind>5.5&&kind<6.5)col*=.89+noise((world.xz+vec2(world.y*.71,world.y*.31))*5.)*.16;
  if(kind>6.5&&kind<7.5)col*=.7+hash(floor(world.xz*23.))*.6;
-`+SURFACE_APPLY_GLSL+/* glsl */`
+`+SURFACE_APPLY_GLSL+HERO_APPLY_GLSL+/* glsl */`
  vec3 light=u.sunDay.xyz;float ndl=max(0.,dot(n,light)),visibility=shadeShadow(world,rawNormal);vec3 hemi=mix(vec3(.09,.105,.1),vec3(.24,.30,.37),n.y*.5+.5)*mix(.12,1.,u.sunDay.w);vec3 sun=u.sunExposure.rgb*ndl*visibility*u.sunDay.w*(2.6-u.env.x*.9);vec3 halfV=normalize(light+view);float ndh=max(0.,dot(n,halfV)),r=max(.06,rough),alpha=r*r,a2=alpha*alpha,den=ndh*ndh*(a2-1.)+1.,D=a2/(3.14159*den*den+.0001);vec3 F=mix(vec3(.035),col,metal)+(1.-mix(vec3(.035),col,metal))*pow(1.-max(0.,dot(halfV,view)),5.);float nv=max(.02,dot(n,view)),k=(r+1.)*(r+1.)/8.,G=nv/(nv*(1.-k)+k)*ndl/max(.001,ndl*(1.-k)+k);vec3 spec=F*D*G/max(.04,4.*nv*max(ndl,.02));float cloudShadow=mix(1.,.70,smoothstep(.42,.75,fbm(world.xz*.00032+u.cameraTime.w*.0015))*u.env.x);vec3 f0=mix(vec3(.04),col,metal),fr=f0+(max(vec3(1.-r),f0)-f0)*pow(1.-nv,5.);
  vec3 reflection=atmosphere(normalize(mix(reflect(-view,n),n,r*r*.65)),false);float specAO=clamp(pow(nv+surfaceAO,exp2(-16.*r-1.))-1.+surfaceAO,0.,1.);
  vec3 indirect=col*(1.-metal)*hemi*surfaceAO+reflection*fr*(1.-r*.55)*specAO*u.fidelity.z;vec3 result=indirect+((vec3(1.)-F)*col*(1.-metal)/3.14159+spec)*sun*3.0*cloudShadow;
@@ -197,10 +199,10 @@ void main(){vec3 rawNormal=normalize(normal),worldDx=dFdx(world),worldDy=dFdy(wo
  if(u.headPos.w>.01){vec3 delta=world-u.headPos.xyz;float d=length(delta),cone=smoothstep(.90,.982,dot(normalize(delta),u.headDir.xyz));result+=col*vec3(1.,.91,.68)*cone*max(0.,dot(n,-normalize(delta)))*u.headPos.w/(1.+d*d*.008);}
  if(kind>8.5&&kind<9.5){float foam=.64+.36*noise(vec2(world.x*1.2,world.y*.24+u.cameraTime.w*2.8));result=mix(result,vec3(.64,.79,.82)*foam,.7);}
  if(kind>9.5&&kind<10.5){float crest=.65+.35*sin(world.x*.09+world.z*.12-u.cameraTime.w*1.2);result=mix(result,vec3(.65,.79,.79),crest*.72);}
- if(kind>10.5&&kind<11.5)result+=col*pow(max(0.,dot(-view,light)),3.)*.42*u.sunDay.w*visibility;
+ if((kind>10.5&&kind<11.5)||(kind>17.5&&kind<18.5))result+=col*pow(max(0.,dot(-view,light)),3.)*.42*u.sunDay.w*visibility;
  if(glassAmount>0.)result=mix(result,atmosphere(reflect(-view,n),false)*.65,glassAmount*.45);
- result+=col*emissive;float distance=length(world-u.cameraTime.xyz),heightFog=exp(-max(world.y-u.env.w,0.)*.00085),f=1.-exp(-distance*u.fog.w*heightFog);result=mix(result,atmosphere(normalize(world-u.cameraTime.xyz),false),clamp(f,0.,.99));outColor=vec4(aces(result),kind>10.5&&kind<11.5?coverage:(kind>7.5?color.a:1.));float ambientShare=clamp(dot(indirect,vec3(.2126,.7152,.0722))/max(.001,dot(result,vec3(.2126,.7152,.0722))),0.,.85);outGeometry=vec4(octNormal(rawNormal),distance,ambientShare);}`;
+ result+=col*emissive;float distance=length(world-u.cameraTime.xyz),heightFog=exp(-max(world.y-u.env.w,0.)*.00085),f=1.-exp(-distance*u.fog.w*heightFog);result=mix(result,atmosphere(normalize(world-u.cameraTime.xyz),false),clamp(f,0.,.99));outColor=vec4(aces(result),(kind>10.5&&kind<11.5)||(kind>17.5&&kind<18.5)?coverage:(kind>7.5?color.a:1.));float ambientShare=clamp(dot(indirect,vec3(.2126,.7152,.0722))/max(.001,dot(result,vec3(.2126,.7152,.0722))),0.,.85);bool reactive=color.a<.999||(kind>1.5&&kind<2.5)||(kind>7.5&&kind<10.5);outGeometry=vec4(octNormal(rawNormal),distance,reactive?-ambientShare-.1:ambientShare);}`;
 export const GLSL_SHADOW_VS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+`
 layout(location=0) in vec3 aPos;layout(location=2) in vec2 aUV;layout(location=3) in mat4 model;layout(location=8) in vec4 params;
-out vec2 uv;flat out vec4 props;void main(){vec3 p=(model*vec4(aPos,1)).xyz;if(params.x>10.5&&params.x<11.5)p=canopyWind(p,model[3].xyz,aPos,length(model[1].xyz),aUV);gl_Position=u.lightVP*vec4(p,1);uv=aUV;props=params;}`;
-export const GLSL_SHADOW_FS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+`in vec2 uv;flat in vec4 props;void main(){if(props.x>10.5&&props.x<11.5&&leafMask(uv,props.z)<.45)discard;}`;
+out vec2 uv;flat out vec4 props;void main(){vec3 p=(model*vec4(aPos,1)).xyz;if((params.x>10.5&&params.x<11.5)||(params.x>17.5&&params.x<18.5))p=canopyWind(p,model[3].xyz,aPos,length(model[1].xyz),aUV);gl_Position=u.lightVP*vec4(p,1);uv=aUV;props=params;}`;
+export const GLSL_SHADOW_FS=`#version 300 es\n`+GLSL_COMMON+LEAF_GLSL+HERO_BINDINGS_GLSL+`in vec2 uv;flat in vec4 props;void main(){if(props.x>10.5&&props.x<11.5&&leafMask(uv,props.z)<.45)discard;if(props.x>17.5&&props.x<18.5&&textureLod(heroColor,vec3(uv,clamp(round(props.z),0.,3.)),0.).a<.45)discard;}`;

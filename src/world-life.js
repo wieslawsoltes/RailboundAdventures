@@ -22,6 +22,7 @@ export class WorldLife {
    if(Math.hypot(f.x-camera.position[0],f.z-camera.position[2])>1200)continue;
    for(let i=0;i<f.count&&this.visibleBirds<max;i++){
     const p=flockPose(f,time,i),base=transform(p.position,[1,1,1],p.yaw),color=world.def.theme==='coast'?hex('#d5d8cd'):hex('#393f3b');
+    color[3]=-1; // Negative tint alpha marks moving geometry for temporal rejection.
     for(const side of [-1,1])this.wings.add(mat4Mul(base,transform([0,0,0],[side,1,1],0,0,p.flap*side)),color,[0,.9,0,0]);
     this.bodies.add(mat4Mul(base,transform([0,-.08,.12],[.23,.22,.66])),color,[0,.9,0,0]);this.visibleBirds++;
    }

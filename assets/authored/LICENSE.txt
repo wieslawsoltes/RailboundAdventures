@@ -1,0 +1,23 @@
+Curated art assets — CC0 1.0 Universal
+
+The source models and textures are provided by Poly Haven under CC0-1.0.
+Asset license: https://polyhaven.com/license
+Legal text: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Rock Moss Set 01 — Kless Gyzen
+https://polyhaven.com/a/rock_moss_set_01
+Tree Stump 02 — Rob Tuytel
+https://polyhaven.com/a/tree_stump_02
+Fern 02 — Rob Tuytel (scanning), Rico Cilliers (modeling)
+https://polyhaven.com/a/fern_02
+Pine Tree 01 twig textures — Rob Tuytel (photography), Rico Cilliers (modeling)
+https://polyhaven.com/a/pine_tree_01
+
+Only source assets are included, not website preview renders, logos or user images.
+The game includes converted geometry and downsampled, channel-packed textures.
+Exact source and derived SHA-256 hashes, authors and conversion settings are in
+manifest.json. The original full pine-tree model is NOT included.
+
+meshoptimizer 1.2.0 is a build-time tool, not included in the game runtime.
+Its code is MIT licensed: https://github.com/zeux/meshoptimizer
+Original station/tree/train code and the conversion scripts use the repository MIT license.

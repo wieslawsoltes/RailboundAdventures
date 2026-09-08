@@ -1,6 +1,6 @@
 /* Railbound Adventures: same-origin, versioned offline app-shell cache. */
 'use strict';
-const CACHE = 'railbound-adventures-3.3.0-fidelity';
+const CACHE = 'railbound-adventures-3.4.0-authored';
 const BASE = new URL('./', self.location.href);
 const FILES = [
   './', 'index.html', 'styles/app.css', 'manifest.webmanifest',
@@ -33,7 +33,23 @@ const FILES = [
   'assets/materials/PavingStones036-surface.png',
   'assets/materials/Rock030-albedo.jpg',
   'assets/materials/Rock030-surface.png',
-  'assets/materials/manifest.json'
+  'assets/materials/manifest.json',
+  'src/land-use.js',
+  'src/authored-assets.js',
+  'src/authored-shaders.js',
+  'src/station-art.js',
+  'src/temporal.js',
+  'src/rolling-art.js',
+  'assets/authored/fern-02-color.png',
+  'assets/authored/fern-02-surface.png',
+  'assets/authored/hero-meshes.bin',
+  'assets/authored/LICENSE.txt', 'assets/authored/manifest.json',
+  'assets/authored/pine-tree-01-color.png',
+  'assets/authored/pine-tree-01-surface.png',
+  'assets/authored/rock-moss-set-01-color.png',
+  'assets/authored/rock-moss-set-01-surface.png',
+  'assets/authored/tree-stump-02-color.png',
+  'assets/authored/tree-stump-02-surface.png'
 ].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)).then(() => self.skipWaiting()));
@@ -48,7 +64,6 @@ self.addEventListener('fetch', event => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== BASE.origin || !url.pathname.startsWith(BASE.pathname)) return;
-  // Network-first keeps source deployments current. The installed shell works offline.
   event.respondWith(fetch(request).then(response => {
     if (response.ok && FILES.includes(url.href)) {
       const copy = response.clone();
